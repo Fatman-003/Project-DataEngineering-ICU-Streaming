@@ -1,15 +1,17 @@
 """Bounded manual verification consumer; never commits offsets."""
 import argparse
+import base64
 import json
 import time
 import uuid
 from confluent_kafka import Consumer, KafkaError, KafkaException, TopicPartition
 from config import TOPICS, settings
+from kafka_topics import DLQ_TOPIC
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--topic", required=True, choices=list(TOPICS.values()))
+    parser.add_argument("--topic", required=True, choices=list(TOPICS.values()) + [DLQ_TOPIC])
     parser.add_argument("--max-messages", type=int, default=20)
     parser.add_argument("--timeout", type=float, default=15,
                         help="Total runtime bound, including waits (seconds)")
@@ -49,7 +51,25 @@ def main():
                     continue
                 raise KafkaException(msg.error())
             payload = json.loads(msg.value())
-            key = msg.key().decode("utf-8") if msg.key() else None
+            key_bytes = msg.key()
+            key = key_bytes.decode("utf-8", errors="replace") if key_bytes is not None else None
+            if args.topic == DLQ_TOPIC:
+                original_key = payload.get("original_key_base64")
+                expected_key = (payload["stay_id"].encode("utf-8") if payload.get("stay_id")
+                                else base64.b64decode(original_key) if original_key is not None
+                                else payload["dlq_id"].encode("utf-8"))
+                if key_bytes != expected_key:
+                    raise ValueError("DLQ Kafka key violates stay/original/fallback precedence")
+                fields = ("dlq_id", "error_type", "error_reason", "failed_at", "stream_type",
+                          "stay_id", "event_id", "event_time", "signal_name", "event_type",
+                          "original_topic", "original_partition", "original_offset",
+                          "original_key", "raw_sha256", "dataset_type", "replay_session_id")
+                result = {field: payload.get(field) for field in fields}
+                result.update(topic=msg.topic(), partition=msg.partition(), offset=msg.offset(),
+                              key=key, key_base64=base64.b64encode(key_bytes).decode("ascii"))
+                print(json.dumps(result, ensure_ascii=True), flush=True)
+                count += 1
+                continue
             if key != str(payload.get("stay_id")):
                 raise ValueError("Kafka key does not equal stay_id")
             fields = ("stay_id", "event_id", "event_time", "producer_time",

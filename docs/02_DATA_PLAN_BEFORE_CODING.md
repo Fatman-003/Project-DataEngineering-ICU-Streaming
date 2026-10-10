@@ -1,7 +1,7 @@
 # 02 — DATA PLAN & IMPLEMENTATION HANDOFF
 
 > **Status:** Current authoritative data/replay handoff for Codex  
-> **Last scope update:** 2026-10-10  
+> **Last scope update:** 2026-10-11
 > Read together with:
 >
 > ```text
@@ -1120,55 +1120,87 @@ PASS
 TICKET-003
 Canonical Reference Dataset
 PASS
+
+TICKET-004
+Kafka Replay Producer & Verification
+PASS
+
+TICKET-005
+Flink Streaming Foundation
+PASS
+```
+
+Current ticket:
+
+```text
+TICKET-006
+Runtime validation / dedup / event-time / DLQ
+IMPLEMENTED — MANUAL VERIFICATION PENDING
 ```
 
 Current runtime stack status:
 
 ```text
-Python 3.12.2               ready
-canonical Reference data    ready
-Docker Desktop              installed/configured on D:
-Kafka broker                not yet considered verified
-Flink                       not implemented yet
-TimescaleDB runtime schema  not implemented yet
-Power BI                    not connected yet
+Python 3.12.2               READY
+Canonical Reference data    READY
+Docker Desktop              READY
+Kafka broker                READY
+Replay Producer             READY
+Verification Consumer       READY
+Flink runtime               READY
+Runtime validation          IMPLEMENTED
+Deduplication               IMPLEMENTED
+Event-time/watermark         IMPLEMENTED
+DLQ Kafka path              IMPLEMENTED
+
+5m/15m windows               NOT STARTED
+Early-warning rules         NOT STARTED
+TimescaleDB                 NOT STARTED
+Power BI                    NOT STARTED
+Alert Receiver              NOT STARTED
 ```
 
 ---
 
-# 22. Next ticket boundary
+# 22. Current and next ticket boundary
 
-Next:
+Current:
 
 ```text
-TICKET-004 — Replay Producer + Single Kafka Broker Verification
+TICKET-006 — Runtime Validation / Dedup / Event-time / DLQ
 ```
 
 Goal:
 
 ```text
-canonical data
+Kafka RAW topics
       ↓
-Replay Producer
+parse / schema / value-timestamp validation
       ↓
-one Kafka broker
+managed-state dedup / event-time / watermark
       ↓
-console/test consumer
-      ↓
-verify ordering / schema / pacing / producer_time
+clean internal stream OR icu.v1.deadletter
 ```
 
-TICKET-004 should **not** yet implement:
+NEXT AFTER TICKET-006 MANUAL PASS:
 
 ```text
-Flink processing
+TICKET-007 — 5m/15m Windows + Early-warning Rule
+```
+
+TICKET-006 should **not** yet implement:
+
+```text
+5m/15m windows
+Early-warning rules
+Processed/aggregate/alert output topics
 TimescaleDB persistence
 Power BI
 Alert Receiver
 Cassandra benchmark
 ```
 
-Those belong to later tickets.
+Those belong to later tickets. Stop after TICKET-006 for manual verification.
 
 ---
 
@@ -1177,13 +1209,13 @@ Those belong to later tickets.
 Current recommended order:
 
 ```text
-001  Raw inspection                         DONE
-002  Clinical ↔ Waveform mapping            DONE
-003  Canonical Reference Dataset            DONE
-004  Replay Producer + Kafka verification   DONE
-005  Flink streaming foundation             NEXT
-006  Runtime validation / dedup / event-time / DLQ
-007  5m/15m windows + early-warning rule
+001  Raw inspection                         PASS
+002  Clinical ↔ Waveform mapping            PASS
+003  Canonical Reference Dataset            PASS
+004  Replay Producer + Kafka verification   PASS
+005  Flink streaming foundation             PASS
+006  Runtime validation / dedup / event-time / DLQ  IMPLEMENTED — MANUAL VERIFICATION PENDING
+007  5m/15m windows + early-warning rule     NEXT AFTER TICKET-006 MANUAL PASS
 008  Processed/alert Kafka output topics + consumers
 009  TimescaleDB schema + storage writer
 010  Power BI views/dashboard connection

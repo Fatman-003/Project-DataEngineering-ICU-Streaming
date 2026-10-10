@@ -1,0 +1,55 @@
+﻿name: icu-flink
+x-common: &common
+  image: icu-pyflink:2.3.0-kafka5.0.0-2.2
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  networks:
+    - streaming
+  environment: &environment
+    KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+    FLINK_PROPERTIES: |
+      jobmanager.rpc.address: jobmanager
+      rest.address: jobmanager
+      rest.bind-address: 0.0.0.0
+      taskmanager.numberOfTaskSlots: 1
+      parallelism.default: 1
+      jobmanager.memory.process.size: 1024m
+      taskmanager.memory.process.size: 2048m
+      python.executable: /opt/pyflink/bin/python
+      python.client.executable: /opt/pyflink/bin/python
+      execution.checkpointing.interval: 10s
+      execution.checkpointing.storage: filesystem
+      execution.checkpointing.dir: file:///opt/flink/checkpoints
+  volumes:
+    - ../../jobs/flink:/opt/flink/jobs:ro
+    - checkpoints:/opt/flink/checkpoints
+
+services:
+  jobmanager:
+    <<: *common
+    container_name: icu-flink-jobmanager
+    command: jobmanager
+    ports:
+      - "127.0.0.1:8081:8081"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8081/overview"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  taskmanager:
+    <<: *common
+    container_name: icu-flink-taskmanager
+    command: taskmanager
+    depends_on:
+      jobmanager:
+        condition: service_healthy
+
+networks:
+  streaming:
+    external: true
+    name: icu-streaming
+volumes:
+  checkpoints:
+    name: icu-flink-checkpoints

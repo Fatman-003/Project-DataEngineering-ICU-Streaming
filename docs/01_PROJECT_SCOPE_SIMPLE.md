@@ -1,7 +1,7 @@
 # 01 — PROJECT SCOPE & CURRENT RUNTIME ARCHITECTURE
 
 > **Status:** Current authoritative scope for implementation  
-> **Last scope update:** 2026-10-10  
+> **Last scope update:** 2026-10-11
 > **Important:** If older project documents conflict with this file, use this file for the **runtime pipeline and project scope**.  
 > `DATABASE_DESIGN_PROPOSAL.md` remains the detailed reference for the TimescaleDB schema.
 
@@ -817,6 +817,14 @@ TICKET-001  Raw Data Inspection                  PASS
 TICKET-002  Clinical ↔ Waveform Mapping          PASS
 TICKET-003  Canonical Reference Dataset          PASS
 TICKET-004  Kafka Replay Producer & Verification PASS
+TICKET-005  Flink Streaming Foundation           PASS
+```
+
+Current ticket:
+
+```text
+TICKET-006  Runtime validation / dedup / event-time / DLQ
+IMPLEMENTED — MANUAL VERIFICATION PENDING
 ```
 
 Current canonical Reference Dataset:
@@ -837,20 +845,37 @@ Kafka broker                READY
 Replay Producer             READY
 Verification Consumer       READY
 
-Flink                       NOT STARTED
+Flink runtime               READY
+Runtime validation          IMPLEMENTED
+Deduplication               IMPLEMENTED
+Event-time/watermark         IMPLEMENTED
+DLQ Kafka path              IMPLEMENTED
+
+5m/15m windows               NOT STARTED
+Early-warning rules         NOT STARTED
 TimescaleDB                 NOT STARTED
 Power BI                    NOT STARTED
 Alert Receiver              NOT STARTED
 ```
 
-Next implementation boundary:
+Current implementation boundary:
 
 ```text
-TICKET-005 — Flink Streaming Foundation
+TICKET-006 — Runtime Validation / Dedup / Event-time / DLQ
 
 Kafka RAW Topics
         ↓
       Flink
         ↓
-consume / deserialize / verify
+parse / validate / dedup / event-time / watermark
+        ↓
+clean internal stream OR icu.v1.deadletter
 ```
+
+NEXT AFTER TICKET-006 MANUAL PASS:
+
+```text
+TICKET-007 — 5m/15m Windows + Early-warning Rule
+```
+
+Stop after TICKET-006 for manual verification. No processed/aggregate/alert output topics, windows, or early-warning rules are implemented in this ticket.
