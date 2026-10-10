@@ -813,9 +813,10 @@ production HA/DR
 Completed:
 
 ```text
-TICKET-001  Raw Data Inspection                 PASS
-TICKET-002  Clinical ↔ Waveform Mapping         PASS
-TICKET-003  Canonical Reference Dataset         PASS
+TICKET-001  Raw Data Inspection                  PASS
+TICKET-002  Clinical ↔ Waveform Mapping          PASS
+TICKET-003  Canonical Reference Dataset          PASS
+TICKET-004  Kafka Replay Producer & Verification PASS
 ```
 
 Current canonical Reference Dataset:
@@ -827,19 +828,29 @@ Current canonical Reference Dataset:
 150 waveform manifest rows
 ```
 
+Current runtime status
+```text
+Python 3.12.2               READY
+Canonical Reference data    READY
+Docker Desktop              READY
+Kafka broker                READY
+Replay Producer             READY
+Verification Consumer       READY
+
+Flink                       NOT STARTED
+TimescaleDB                 NOT STARTED
+Power BI                    NOT STARTED
+Alert Receiver              NOT STARTED
+```
+
 Next implementation boundary:
 
 ```text
-TICKET-004
-Canonical Reference/Test Data
+TICKET-005 — Flink Streaming Foundation
+
+Kafka RAW Topics
         ↓
-Python Replay Producer
+      Flink
         ↓
-ONE Kafka Broker
-        ↓
-Consumer verification
+consume / deserialize / verify
 ```
-
-**Do not implement Flink, TimescaleDB, Power BI, or the Alert Receiver inside TICKET-004 unless the ticket explicitly says so.**
-
-The next tickets will build the runtime pipeline incrementally after Kafka replay is verified.

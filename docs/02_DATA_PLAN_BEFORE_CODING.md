@@ -1180,10 +1180,8 @@ Current recommended order:
 001  Raw inspection                         DONE
 002  Clinical ↔ Waveform mapping            DONE
 003  Canonical Reference Dataset            DONE
-
-004  Replay Producer + Kafka verification   NEXT
-
-005  Flink streaming foundation
+004  Replay Producer + Kafka verification   DONE
+005  Flink streaming foundation             NEXT
 006  Runtime validation / dedup / event-time / DLQ
 007  5m/15m windows + early-warning rule
 008  Processed/alert Kafka output topics + consumers
