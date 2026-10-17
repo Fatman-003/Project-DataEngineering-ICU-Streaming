@@ -1,0 +1,185 @@
+{
+  "source": "MIMIC-IV Clinical Database Demo 2.2",
+  "source_clock": "deidentified local timestamps; timezone unspecified",
+  "bed_id_source": "project simulation",
+  "patients": [
+    {
+      "subject_id": "10007818",
+      "gender": "M",
+      "anchor_age": "69",
+      "anchor_year": "2146",
+      "anchor_year_group": "2014 - 2016",
+      "dod": "2146-07-12",
+      "demo_id": "P04"
+    },
+    {
+      "subject_id": "10014354",
+      "gender": "M",
+      "anchor_age": "60",
+      "anchor_year": "2146",
+      "anchor_year_group": "2014 - 2016",
+      "dod": null,
+      "demo_id": "P03"
+    },
+    {
+      "subject_id": "10019003",
+      "gender": "F",
+      "anchor_age": "65",
+      "anchor_year": "2148",
+      "anchor_year_group": "2011 - 2013",
+      "dod": "2155-12-03",
+      "demo_id": "P02"
+    },
+    {
+      "subject_id": "10039708",
+      "gender": "F",
+      "anchor_age": "46",
+      "anchor_year": "2138",
+      "anchor_year_group": "2014 - 2016",
+      "dod": null,
+      "demo_id": "P01"
+    }
+  ],
+  "admissions": [
+    {
+      "hadm_id": "21457723",
+      "subject_id": "10019003",
+      "admittime": "2155-07-10 17:48:00",
+      "dischtime": "2155-07-18 16:59:00",
+      "admission_type": "EW EMER.",
+      "admission_location": "TRANSFER FROM HOSPITAL",
+      "discharge_location": "HOME"
+    },
+    {
+      "hadm_id": "22987108",
+      "subject_id": "10007818",
+      "admittime": "2146-06-10 16:37:00",
+      "dischtime": "2146-07-12 00:00:00",
+      "admission_type": "DIRECT EMER.",
+      "admission_location": "PHYSICIAN REFERRAL",
+      "discharge_location": "DIED"
+    },
+    {
+      "hadm_id": "24928679",
+      "subject_id": "10039708",
+      "admittime": "2143-09-19 18:36:00",
+      "dischtime": "2143-09-22 23:00:00",
+      "admission_type": "OBSERVATION ADMIT",
+      "admission_location": "CLINIC REFERRAL",
+      "discharge_location": "HOME HEALTH CARE"
+    },
+    {
+      "hadm_id": "29600294",
+      "subject_id": "10014354",
+      "admittime": "2148-08-14 22:57:00",
+      "dischtime": "2148-08-18 21:12:00",
+      "admission_type": "OBSERVATION ADMIT",
+      "admission_location": "PHYSICIAN REFERRAL",
+      "discharge_location": "AGAINST ADVICE"
+    }
+  ],
+  "icustays": [
+    {
+      "stay_id": "32359580",
+      "subject_id": "10007818",
+      "hadm_id": "22987108",
+      "first_careunit": "Medical Intensive Care Unit (MICU)",
+      "last_careunit": "Medical Intensive Care Unit (MICU)",
+      "intime": "2146-06-22 11:46:29",
+      "outtime": "2146-07-13 00:27:47",
+      "los": "20.528680555555557",
+      "bed_id": "BED-04"
+    },
+    {
+      "stay_id": "35727289",
+      "subject_id": "10019003",
+      "hadm_id": "21457723",
+      "first_careunit": "Medical/Surgical Intensive Care Unit (MICU/SICU)",
+      "last_careunit": "Medical/Surgical Intensive Care Unit (MICU/SICU)",
+      "intime": "2155-07-10 17:48:57",
+      "outtime": "2155-07-13 15:04:42",
+      "los": "2.8859375000000003",
+      "bed_id": "BED-02"
+    },
+    {
+      "stay_id": "37323533",
+      "subject_id": "10039708",
+      "hadm_id": "24928679",
+      "first_careunit": "Surgical Intensive Care Unit (SICU)",
+      "last_careunit": "Surgical Intensive Care Unit (SICU)",
+      "intime": "2143-09-19 19:40:55",
+      "outtime": "2143-09-20 16:29:51",
+      "los": "0.86731481481481476",
+      "bed_id": "BED-01"
+    },
+    {
+      "stay_id": "39864867",
+      "subject_id": "10014354",
+      "hadm_id": "29600294",
+      "first_careunit": "Medical/Surgical Intensive Care Unit (MICU/SICU)",
+      "last_careunit": "Medical/Surgical Intensive Care Unit (MICU/SICU)",
+      "intime": "2148-08-16 08:57:26",
+      "outtime": "2148-08-17 14:45:17",
+      "los": "1.2415625",
+      "bed_id": "BED-03"
+    }
+  ],
+  "d_items": [
+    {
+      "itemid": "220045",
+      "label": "Heart Rate",
+      "abbreviation": "HR",
+      "category": "Routine Vital Signs",
+      "unitname": "bpm",
+      "param_type": "Numeric"
+    },
+    {
+      "itemid": "220050",
+      "label": "Arterial Blood Pressure systolic",
+      "abbreviation": "ABPs",
+      "category": "Routine Vital Signs",
+      "unitname": "mmHg",
+      "param_type": "Numeric"
+    },
+    {
+      "itemid": "220051",
+      "label": "Arterial Blood Pressure diastolic",
+      "abbreviation": "ABPd",
+      "category": "Routine Vital Signs",
+      "unitname": "mmHg",
+      "param_type": "Numeric"
+    },
+    {
+      "itemid": "220052",
+      "label": "Arterial Blood Pressure mean",
+      "abbreviation": "ABPm",
+      "category": "Routine Vital Signs",
+      "unitname": "mmHg",
+      "param_type": "Numeric"
+    },
+    {
+      "itemid": "220210",
+      "label": "Respiratory Rate",
+      "abbreviation": "RR",
+      "category": "Respiratory",
+      "unitname": "insp/min",
+      "param_type": "Numeric"
+    },
+    {
+      "itemid": "220277",
+      "label": "O2 saturation pulseoxymetry",
+      "abbreviation": "SpO2",
+      "category": "Respiratory",
+      "unitname": "%",
+      "param_type": "Numeric"
+    }
+  ],
+  "d_labitems": [
+    {
+      "itemid": "50813",
+      "label": "Lactate",
+      "fluid": "Blood",
+      "category": "Blood Gas"
+    }
+  ]
+}

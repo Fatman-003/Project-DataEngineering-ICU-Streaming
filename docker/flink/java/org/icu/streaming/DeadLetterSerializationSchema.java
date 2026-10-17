@@ -30,9 +30,12 @@ public final class DeadLetterSerializationSchema implements KafkaRecordSerializa
         try {
             JsonNode envelope = mapper.readTree(value);
             JsonNode stayId = envelope.get("stay_id");
+            if (stayId == null || stayId.isNull()) {
+                stayId = envelope.get("mapped_stay_id");
+            }
             JsonNode originalKey = envelope.get("original_key_base64");
             byte[] key;
-            if (stayId != null && stayId.isTextual() && !stayId.asText().isEmpty()) {
+            if (stayId != null && (stayId.isIntegralNumber() || stayId.isTextual()) && !stayId.asText().isEmpty()) {
                 key = stayId.asText().getBytes(StandardCharsets.UTF_8);
             } else if (originalKey != null && originalKey.isTextual()) {
                 key = Base64.getDecoder().decode(originalKey.asText());

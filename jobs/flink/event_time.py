@@ -27,6 +27,7 @@ def watermark_strategy(tolerance_seconds):
             return event_timestamp_ms(json.loads(value)["event"])
 
     return (WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(tolerance_seconds))
+            .with_idleness(Duration.of_seconds(5))
             .with_timestamp_assigner(LogicalTimestampAssigner()))
 
 

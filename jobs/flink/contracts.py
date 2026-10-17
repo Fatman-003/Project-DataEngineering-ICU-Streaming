@@ -1,56 +1,50 @@
-﻿"""RAW JSON inspection only: no schema/value validation or business rules."""
-import hashlib
+"""Seven V2 topics and strict JSON parsing."""
 import json
 
-TOPICS = {
-    "vitals": "icu.v1.vitals.numeric",
-    "clinical": "icu.v1.clinical.events",
-    "waveform": "icu.v1.vitals.waveform",
+TOPICS = {"chartevents": "icu.v2.chartevents", "labevents": "icu.v2.labevents"}
+BUSINESS_TOPICS = {
+    "chartevents": "icu.v2.chartevents.cleaned",
+    "labevents": "icu.v2.labevents.cleaned",
+    "aggregates": "icu.v2.vitals.15m",
+    "alerts": "icu.v2.alerts",
 }
+DLQ_TOPIC = "icu.v2.deadletter"
+CORE_TOPICS = (*TOPICS.values(), *BUSINESS_TOPICS.values(), DLQ_TOPIC)
+CHART_FIELDS = frozenset((
+    "schema_version", "event_id", "subject_id", "hadm_id", "stay_id", "bed_id",
+    "itemid", "signal_name", "event_time", "valuenum", "valueuom"))
+LAB_FIELDS = (CHART_FIELDS - {"stay_id", "signal_name"}) | {"mapped_stay_id", "lab_name"}
+SIGNALS = {
+    "HR": (220045, "bpm", 0, 350), "MAP": (220052, "mmHg", 0, 300),
+    "SBP": (220050, "mmHg", 0, 350), "DBP": (220051, "mmHg", 0, 250),
+    "SpO2": (220277, "%", 0, 100), "RR": (220210, "insp/min", 0, 100),
+}
+LABS = {"Lactate": (50813, "mmol/L", 0, 50)}
 
 
-def selected_topics(stream):
-    if stream == "all":
-        return dict(TOPICS)
-    if stream not in TOPICS:
-        raise ValueError(f"Unknown stream: {stream}")
-    return {stream: TOPICS[stream]}
+def selected_topics(stream="all"):
+    return dict(TOPICS) if stream == "all" else {stream: TOPICS[stream]}
 
 
 def _invalid_constant(value):
     raise ValueError(f"Non-JSON constant: {value}")
 
 
+def _unique_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Duplicate JSON field: {key}")
+        result[key] = value
+    return result
+
+
 def parse_event(raw):
-    """Return the original object, leaving timestamps and nulls untouched."""
-    event = json.loads(raw, parse_constant=_invalid_constant)
+    event = json.loads(raw, parse_constant=_invalid_constant, object_pairs_hook=_unique_pairs)
     if not isinstance(event, dict):
         raise ValueError("Expected a JSON object")
     return event
 
 
-def inspection_line(raw, stream):
-    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    try:
-        event = parse_event(raw)
-    except (ValueError, TypeError) as error:
-        return json.dumps({
-            "kind": "PARSE_ERROR", "stream": stream, "topic": TOPICS[stream],
-            "reason": str(error), "raw_sha256": digest, "raw_preview": raw[:240],
-        }, ensure_ascii=False)
-    fields = (
-        "event_id", "run_id", "patient_key", "subject_id", "hadm_id", "stay_id",
-        "signal_name", "event_type", "item_name", "value", "value_text", "unit",
-        "source_event_time", "event_time", "producer_time", "chart_time",
-        "available_time", "availability_status", "validation_flags",
-        "replay_time_basis", "replay_session_id", "dataset_type", "is_virtual",
-        "waveform_record_id", "start_time", "end_time", "sampling_rate_hz",
-    )
-    result = {field: event[field] for field in fields if field in event}
-    result.update(kind="RAW_EVENT", stream=stream, topic=TOPICS[stream],
-                  raw_sha256=digest, available_time_present="available_time" in event)
-    samples = event.get("samples")
-    if isinstance(samples, list):
-        result.update(sample_count=len(samples), samples_preview=samples[:5],
-                      missing_sample_count=event.get("missing_sample_count"))
-    return json.dumps(result, ensure_ascii=False, allow_nan=False)
+def stay_key(event):
+    return str(event.get("stay_id", event.get("mapped_stay_id")))

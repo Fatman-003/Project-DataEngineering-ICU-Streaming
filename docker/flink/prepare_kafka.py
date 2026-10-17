@@ -10,8 +10,7 @@ import time
 from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(PROJECT / "scripts/replay"))
-from config import settings
+sys.path.insert(0, str(PROJECT / "scripts/demo"))
 from kafka_topics import ensure_topics
 from confluent_kafka.admin import AdminClient
 
@@ -72,7 +71,7 @@ def main():
         original = docker("exec", CONTAINER, "cat", "/opt/kafka/config/server.properties").stdout
         updated = updated_properties(original)
         changed = properties(original) != properties(updated)
-        output = PROJECT / "data/working/flink"
+        output = PROJECT / "data/working/operations"
         output.mkdir(parents=True, exist_ok=True)
         backup = output / "kafka_server_properties.before.txt"
         if not backup.exists():
@@ -85,7 +84,7 @@ def main():
             print("Adding INTERNAL listener on 9094; restarting the SAME Kafka container.",
                   flush=True)
             docker("restart", "--time", "30", CONTAINER)
-        admin = AdminClient({"bootstrap.servers": settings()["bootstrap"],
+        admin = AdminClient({"bootstrap.servers": "localhost:9092",
                              "log_level": 0, "socket.timeout.ms": 3000})
         deadline = time.monotonic() + 60
         while True:
@@ -100,9 +99,9 @@ def main():
         after = json.loads(docker("inspect", CONTAINER).stdout)[0]
         if after["Id"] != inspected["Id"]:
             raise ValueError("Broker container identity changed unexpectedly")
-        topics = ensure_topics(settings()["bootstrap"])
+        topics = ensure_topics("localhost:9092")
         print(json.dumps({"container_id_unchanged": True, "restarted": changed,
-                          "network": NETWORK, "host_bootstrap": settings()["bootstrap"],
+                          "network": NETWORK, "host_bootstrap": "localhost:9092",
                           "flink_bootstrap": "icu-kafka:9094", "topics": topics}, indent=2))
         return 0
     except Exception as error:

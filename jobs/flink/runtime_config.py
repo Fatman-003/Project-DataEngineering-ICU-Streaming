@@ -1,9 +1,7 @@
-"""Central TICKET-006 runtime settings; no host PyFlink dependency."""
+"""Fixed V2 computation settings; environment overrides concern infrastructure only."""
 import os
 from dataclasses import dataclass
-
-DLQ_TOPIC = "icu.v1.deadletter"
-# Original RAW values may expand through JSON escaping plus lossless Base64.
+from contracts import BUSINESS_TOPICS, DLQ_TOPIC
 DLQ_MAX_MESSAGE_BYTES = 8 * 1024 * 1024
 
 
@@ -17,26 +15,35 @@ class RuntimeConfig:
 
     @classmethod
     def from_env(cls):
-        defaults = cls()
-        config = cls(
-            bootstrap_servers=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", defaults.bootstrap_servers),
-            dlq_topic=os.environ.get("DLQ_TOPIC", defaults.dlq_topic),
-            max_out_of_orderness_seconds=int(os.environ.get(
-                "MAX_OUT_OF_ORDERNESS_SECONDS", defaults.max_out_of_orderness_seconds)),
-            dedup_state_ttl_hours=int(os.environ.get(
-                "DEDUP_STATE_TTL_HOURS", defaults.dedup_state_ttl_hours)),
-            checkpoint_interval_ms=int(os.environ.get(
-                "CHECKPOINT_INTERVAL_MS", defaults.checkpoint_interval_ms)),
-        )
+        config = cls(bootstrap_servers=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "icu-kafka:9094"))
         config.validate()
         return config
 
     def validate(self):
-        if not self.bootstrap_servers.strip():
-            raise ValueError("KAFKA_BOOTSTRAP_SERVERS must be nonempty")
-        if self.dlq_topic != DLQ_TOPIC:
-            raise ValueError(f"TICKET-006 permits only output topic {DLQ_TOPIC}")
+        if not self.bootstrap_servers.strip() or self.dlq_topic != DLQ_TOPIC:
+            raise ValueError("Invalid V2 Kafka configuration")
+        if min(self.dedup_state_ttl_hours, self.checkpoint_interval_ms) <= 0:
+            raise ValueError("TTL and checkpoint interval must be positive")
         if self.max_out_of_orderness_seconds < 0:
-            raise ValueError("MAX_OUT_OF_ORDERNESS_SECONDS must be >= 0")
-        if self.dedup_state_ttl_hours <= 0 or self.checkpoint_interval_ms <= 0:
-            raise ValueError("DEDUP_STATE_TTL_HOURS and CHECKPOINT_INTERVAL_MS must be > 0")
+            raise ValueError("Out-of-order tolerance must be nonnegative")
+
+
+@dataclass(frozen=True)
+class WindowAlertConfig:
+    window_15m_seconds: int = 900
+    window_slide_seconds: int = 60
+    map_threshold: float = 65.0
+    map_sustained_seconds: int = 300
+    map_max_sample_gap_seconds: int = 90
+
+    @classmethod
+    def from_env(cls):
+        return cls()
+
+    def validate(self):
+        if self.window_15m_seconds != 900 or self.window_slide_seconds != 60:
+            raise ValueError("V2 uses only 15-minute windows sliding every minute")
+        if self.map_threshold != 65 or self.map_sustained_seconds != 300:
+            raise ValueError("MAP rule requires <65 continuously for >=300 seconds")
+        if self.map_max_sample_gap_seconds <= 0:
+            raise ValueError("Sample continuity gap must be positive")

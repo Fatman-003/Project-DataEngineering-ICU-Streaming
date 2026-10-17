@@ -1,19 +1,9 @@
 """Deterministic identity and Flink managed-state deduplication."""
-import hashlib
 import json
 
 
 def dedup_identity(event, stream):
-    event_id = event.get("event_id")
-    if event_id:
-        return f"{stream}:id:{event_id}"
-    if stream != "waveform":
-        raise ValueError("event_id required for numeric and clinical deduplication")
-    identity = [event[field] for field in (
-        "stay_id", "waveform_record_id", "signal_name", "start_time", "end_time")]
-    digest = hashlib.sha256(json.dumps(identity, ensure_ascii=True,
-                                      separators=(",", ":")).encode()).hexdigest()
-    return f"waveform:chunk:{digest}"
+    return f"{stream}:id:{event['event_id']}"
 
 
 def check_and_remember(state):
