@@ -41,11 +41,16 @@ def updated_properties(text):
     if values.get("node.id") != "1" or values.get("inter.broker.listener.name") != "PLAINTEXT":
         raise ValueError("Unexpected broker identity/inter-broker listener; refusing to overwrite")
     expected = {
-        "listeners": "PLAINTEXT://:9092,CONTROLLER://:9093",
-        "advertised.listeners": "PLAINTEXT://localhost:9092",
+        "listeners": ("PLAINTEXT://:9092,CONTROLLER://:9093", PROPERTIES["listeners"]),
+        "advertised.listeners": (
+            "PLAINTEXT://localhost:9092",
+            # apache/kafka:4.2.2 also advertises CONTROLLER in its stock config.
+            "PLAINTEXT://localhost:9092,CONTROLLER://localhost:9093",
+            PROPERTIES["advertised.listeners"],
+        ),
     }
-    for key, original in expected.items():
-        if values.get(key) not in (original, PROPERTIES[key]):
+    for key, allowed in expected.items():
+        if values.get(key) not in allowed:
             raise ValueError(f"Unexpected {key}; refusing to replace another listener setup")
     for key, desired in PROPERTIES.items():
         # This script owns only the three documented listener settings.

@@ -1,160 +1,128 @@
-# Hệ thống theo dõi ICU theo thời gian thực và cảnh báo sớm
+# Demo theo dõi ICU theo thời gian thực
 
-## Tổng quan dự án
+Dự án mô phỏng dấu hiệu sinh tồn và xét nghiệm của bốn giường ICU.
+Simulator phát dữ liệu vào Kafka; Flink kiểm tra, loại bản ghi trùng, tính
+thống kê 15 phút và tạo cảnh báo MAP thấp kéo dài. Realtime Gateway cung cấp
+snapshot/WebSocket, còn Storage Writer ghi kết quả vào TimescaleDB. Bản ghi
+không hợp lệ đi vào `icu.v2.deadletter`. Dữ liệu đo là mô phỏng, **không phải
+số đo gốc của MIMIC (not original MIMIC observations)**. Repo đã có cấu hình
+bệnh nhân và seed cần cho demo; không cần tải bộ dữ liệu MIMIC gốc.
 
-Dự án mô phỏng bốn giường ICU. Simulator gửi dấu hiệu sinh tồn và xét nghiệm
-Lactate được tạo ra vào Kafka. Flink kiểm tra dữ liệu, loại bản ghi trùng, xử lý
-theo event-time rồi tạo telemetry và lab đã làm sạch, thống kê trượt 15 phút và
-cảnh báo hạ huyết áp kéo dài. Event sai định dạng, sai giá trị, trùng hoặc đến
-quá muộn đi vào `icu.v2.deadletter`.
+## Image Docker được dùng
 
-Hai consumer độc lập nhận các luồng nghiệp vụ: Realtime Gateway đẩy cập nhật
-qua WebSocket, còn Storage Writer lưu dữ liệu đã được chấp nhận vào TimescaleDB.
-Cảnh báo MAP hiện tại là **cảnh báo hạ huyết áp kéo dài**, không phải chẩn đoán
-sepsis.
+| Dịch vụ | Image gốc | Image chạy trong dự án |
+|---|---|---|
+| Kafka | `apache/kafka:4.2.2` | Cùng image, container `icu-kafka` |
+| Flink | `flink:2.3.0` | `icu-pyflink:2.3.0-kafka5.0.0-2.2-v2` |
+| Kafka UI | `provectuslabs/kafka-ui:v0.7.2` | Cùng image |
+| TimescaleDB | `timescale/timescaledb:2.30.2-pg17` | Cùng image |
+| Realtime Gateway | `python:3.12.12-slim` | `icu-realtime-gateway:v2` |
+| Storage Writer | Dùng chung `python:3.12.12-slim` | `icu-storage-writer:v1` |
 
-Bốn bộ định danh bệnh nhân, lần nhập viện và ICU stay lấy từ MIMIC-IV Clinical
-Demo 2.2, được cố định trong [config/demo_patients.yaml](config/demo_patients.yaml).
-Giường và số đo là dữ liệu mô phỏng, **không phải số đo gốc của MIMIC
-(not original MIMIC observations)**.
+Ba image `icu-*` được build từ Dockerfile của repo khi chạy script. Dockerfile
+khóa base image bằng SHA256 và Flink image cài Kafka connector `5.0.0-2.2`.
 
-## Kiến trúc hệ thống
+## Chạy lần đầu trên Windows
 
-```text
-4 định danh ICU cố định + telemetry/lab được tạo ra
-                         |
-                         v
-                    ICU Simulator
-                         |
-                         v
-                  Kafka RAW topics
-                         |
-                         v
-                       Flink
-       kiểm tra / loại trùng / event-time
-           thống kê 15m / cảnh báo MAP
-                         |
-                         v
-                Kafka business topics
-                   /             \
-                  v               v
-       Realtime Gateway      Storage Writer
-                  |               |
-                  v               v
-            WebSocket/UI      TimescaleDB
+Mở PowerShell tại **thư mục gốc của repo** (nơi có `run_icu_demo.ps1`).
+Cần Docker Desktop chạy ở chế độ **Linux containers** và Python **3.12**.
+Không cần cài Flink, Kafka hoặc PostgreSQL trực tiếp lên Windows.
 
-  event sai / trùng / quá muộn -> icu.v2.deadletter
+**Kiểm tra dung lượng trước khi bắt đầu:** ổ đĩa lưu dữ liệu của Docker
+Desktop (image, build cache và volume) nên còn **ít nhất 20 GB trống**. Image
+Docker không nhất thiết nằm trong thư mục repo; kiểm tra vị trí lưu dữ liệu
+Docker Desktop nếu bạn đã đổi ổ đĩa mặc định. Thư mục repo cũng cần còn chỗ
+cho `.venv` và các file phát sinh. `run_icu_demo.ps1` tự tải/build image còn
+thiếu và khởi động dịch vụ, **không tự cài Docker Desktop**.
+
+**1. Kiểm tra môi trường.**
+
+```powershell
+docker info --format '{{.OSType}}'
+docker compose version
+python --version
 ```
 
-Gateway và Writer dùng hai Kafka consumer group riêng. Cảnh báo đi từ Flink
-qua Kafka đến Gateway rồi WebSocket; đường realtime không chờ ghi database.
-TimescaleDB giữ lịch sử để truy vấn và phân tích. Runtime hiện cung cấp REST và
-WebSocket; chưa có ứng dụng frontend hoàn chỉnh.
+Lệnh đầu phải in `linux`; lệnh cuối phải in `Python 3.12.x`. Nếu chưa đúng,
+mở Docker Desktop hoặc chọn bản Python 3.12 trước khi làm tiếp. Các cổng
+`9092`, `8081`, `8082`, `8083` và `5432` không được ứng dụng khác chiếm.
 
-## Các dịch vụ đang chạy
+**2. Tải Kafka image, rồi tạo broker một lần.**
 
-| Dịch vụ | Mục đích | Địa chỉ |
-|---|---|---|
-| Kafka | Broker nhận và phát stream | `localhost:9092` (trong Docker: `icu-kafka:9094`) |
-| Flink UI | Theo dõi job và checkpoint | http://localhost:8081 |
-| Kafka UI, cluster `ICU-LOCAL` | Xem topic, message và consumer group | http://localhost:8082 |
-| Realtime Gateway | Trạng thái trực tiếp và WebSocket | http://localhost:8083 |
-| Gateway snapshot | REST snapshot tại thời điểm gọi | http://localhost:8083/api/snapshot |
-| Gateway WebSocket | Cập nhật liên tục | `ws://localhost:8083/ws` |
-| TimescaleDB | Lưu lịch sử bền vững | `localhost:5432` |
-| Storage Writer | Ghi từ Kafka vào database | Container nền `icu-storage-writer`, không mở cổng cho người dùng |
+Chỉ trên máy **chưa có** container `icu-kafka`, chạy lần lượt:
 
-Cần có Docker Desktop, môi trường `.venv` cài
-[requirements.txt](requirements.txt) và broker `icu-kafka` của dự án. File
-[.env.example](.env.example) chứa giá trị demo; launcher tạo hoặc bổ sung file
-`.env` bị Git bỏ qua khi cần. Image dự án được build và image TimescaleDB được
-tải tự động nếu còn thiếu. Lần đầu có thể lâu hơn các lần chạy sau.
+```powershell
+docker pull apache/kafka:4.2.2
+docker run -d --name icu-kafka -p 127.0.0.1:9092:9092 apache/kafka:4.2.2
+docker ps --filter name=icu-kafka
+```
 
-## Khởi động hệ thống
+Lệnh đầu tải image Kafka `4.2.2`; lệnh thứ hai tạo container broker từ image
+đó; lệnh cuối phải hiện `icu-kafka` đang chạy. Nếu container đã tồn tại,
+không chạy lại `docker run`; nếu nó đang dừng, chạy `docker start icu-kafka`.
+`run_icu_demo.ps1` giữ nguyên broker này, tự thêm mạng/listener nội bộ và
+tạo các topic cần thiết; script **không tạo broker mới**.
 
-Trong PowerShell tại thư mục dự án, chạy:
+**3. Tạo môi trường Python cho script.**
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+Không cần kích hoạt `.venv`: lệnh chạy demo sẽ dùng đúng Python trong thư mục
+này. Khi chạy lần đầu, script tự tạo `.env` từ `.env.example`, khởi tạo
+database/bảng và seed. `POSTGRES_DB`, `POSTGRES_USER` và `POSTGRES_PASSWORD`
+là cấu hình database cục bộ cho TimescaleDB và Storage Writer; người chạy
+demo không phải đăng nhập DB. Nếu muốn đổi mật khẩu demo, chạy
+`Copy-Item .env.example .env` rồi sửa `POSTGRES_PASSWORD` trong `.env`
+**trước lần khởi tạo database đầu tiên**. Sửa `.env` sau đó không tự đổi mật
+khẩu đã lưu trong volume DB.
+
+**4. Chạy demo.**
 
 ```powershell
 .\run_icu_demo.ps1
 ```
 
-Lệnh này kiểm tra Docker và quyền sở hữu các cổng 9092, 8081, 8082, 8083,
-5432; giữ nguyên Kafka broker hiện có; khởi động Flink, Kafka UI, Gateway,
-TimescaleDB và Storage Writer; khởi tạo schema/seed; reset bảy V2 topic và bốn
-bảng dữ liệu runtime; tạo đúng một Flink job mới; rồi chạy mô phỏng sáu phút
-theo thời gian thực. Các service tiếp tục chạy sau khi simulator kết thúc.
-Không cần tự chạy lệnh pull, build, migration, seed hay reset riêng.
+Script tự tải các image dịch vụ còn thiếu, build image `icu-*`, khởi động
+các service và chuẩn bị database. Sau đó nó reset dữ liệu demo, chờ
+Flink/Gateway/Writer sẵn sàng rồi mới phát dữ liệu.
+Lần đầu tải/build có thể lâu hơn; không cần chạy `docker compose up`,
+migration hoặc seed riêng. Khi PowerShell in
+`ICU STREAMING SYSTEM READY`, các UI đã mở được và simulator bắt đầu
+ngay sau đó. Demo thường chạy khoảng **6 phút**.
 
-| Chế độ | Lệnh | Kết quả |
-|---|---|---|
-| Demo thường | `.\run_icu_demo.ps1` | Sáu phút thực, bốn cập nhật vital mỗi giây, Kafka và dữ liệu runtime DB bắt đầu sạch |
-| Kiểm tra nhanh | `.\run_icu_demo.ps1 -FastVerify` | Sáu phút logic phát ở tốc độ 24×; kiểm tra Kafka, Flink, Gateway, WebSocket, DB, lag và idempotency |
-| Giữ lịch sử | `.\run_icu_demo.ps1 -KeepDatabaseData` | Giữ các hàng runtime DB cũ; Kafka và Gateway vẫn reset |
+Nếu PowerShell chặn file `.ps1`, dùng lệnh này trong cùng thư mục:
 
-FastVerify dùng **cùng logic** và ngưỡng MAP dưới 65 trong ít nhất **300 giây
-event-time**; nó chỉ tăng tốc phát event, không rút ngắn thời gian xác nhận.
-Demo thường phát một giây logic trong một giây thực. Các tùy chọn demo khác gồm
-`-Loop`, `-Raw`, `-DurationMinutes`, `-IntervalSeconds`, `-SkipBuild` và
-`-SkipDockerStart`.
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\run_icu_demo.ps1
+```
 
-## Bốn giường bệnh demo
+Để nhóm có thêm thời gian quan sát, dùng `.\run_icu_demo.ps1 -Loop`;
+nhấn `Ctrl+C` để dừng phát dữ liệu. `.\run_icu_demo.ps1 -FastVerify`
+chạy kiểm tra đầu cuối nhanh, không phù hợp để xem trực tiếp. Mỗi lần chạy
+mặc định reset dữ liệu demo V2 và bốn bảng runtime; tùy chọn
+`-KeepDatabaseData` giữ lại dữ liệu runtime DB. Các service vẫn chạy sau
+khi simulator kết thúc. `start_icu.ps1` chỉ bật service/job trên môi trường
+đã chuẩn bị; dùng `run_icu_demo.ps1` cho demo đầy đủ.
 
-| Bệnh nhân / giường | Kịch bản |
+## Xem kết quả
+
+Mở các địa chỉ sau trên **máy đang chạy demo** sau dòng
+`ICU STREAMING SYSTEM READY`. Nếu đã mở tab từ trước, tải lại trang.
+
+| Mục | Xem ở đâu |
 |---|---|
-| P01 / BED-01 | Dấu hiệu sinh tồn bình thường |
-| P02 / BED-02 | MAP <65 kéo dài; dự kiến một cảnh báo `SUSTAINED_HYPOTENSION` |
-| P03 / BED-03 | MAP thấp ngắn hạn rồi hồi phục; không phát cảnh báo kéo dài |
-| P04 / BED-04 | Chủ yếu bình thường, có một số event trùng, sai giá trị, quá muộn và out-of-order vẫn chấp nhận được |
+| Flink job | [localhost:8081](http://localhost:8081): job ICU V2 ở trạng thái `RUNNING`; xem số bản ghi và checkpoint. |
+| Kafka message | [localhost:8082](http://localhost:8082): chọn `ICU-LOCAL` → Topics → Messages. `icu.v2.chartevents` là dữ liệu vào; `icu.v2.chartevents.cleaned` là dữ liệu đã làm sạch; `icu.v2.alerts` là cảnh báo; `icu.v2.deadletter` là bản ghi bị loại. |
+| Bốn giường ICU | [Gateway snapshot](http://localhost:8083/api/snapshot): trang JSON chứa P01–P04; tải lại để xem giá trị mới. Cổng 8083 không có dashboard ở địa chỉ gốc. |
+| Database | Trong PowerShell khác: `docker exec -it icu-timescaledb psql -U icu_app -d icu`, rồi chạy `SELECT COUNT(*) FROM chartevents;` hoặc `SELECT * FROM alerts ORDER BY trigger_time DESC LIMIT 20;`. Nếu đã đổi user/DB trong `.env`, thay hai tham số cho khớp. |
 
-Sáu tín hiệu `HR`, `MAP`, `SBP`, `DBP`, `SpO2`, `RR` luân phiên; mỗi tín hiệu
-được cập nhật sau sáu giây logic. P02 có MAP thấp đầu tiên ở mốc `00:13` và
-đủ điều kiện ở `05:13`. Khoảng cách giữa các mẫu MAP hợp lệ không được quá
-90 giây; MAP ≥65 sẽ kết thúc episode và cho phép cảnh báo mới. Gateway chuyển
-cảnh báo ngay sau khi Flink xác nhận, không đợi thống kê hoặc truy vấn DB.
+Kafka dùng `localhost:9092`, TimescaleDB dùng `localhost:5432`. P02 dự kiến
+có cảnh báo MAP thấp kéo dài gần phút **5:13** của demo thường; trước mốc đó
+topic alerts có thể còn trống.
 
-## Database và cách theo dõi
-
-Năm bảng tham chiếu là `patients`, `admissions`, `icustays`, `d_items` và
-`d_labitems`. Bốn bảng time-series là `chartevents`, `labevents`, `vitals_15m`
-và `alerts`. Mặc định lần chạy mới chỉ xóa dữ liệu ở bốn bảng time-series; các
-bảng tham chiếu và Docker volume `icu-timescale-data` vẫn được giữ. Dùng
-`-KeepDatabaseData` để giữ cả các hàng runtime trước đó.
-
-Thông tin đăng nhập nằm trong `.env` với các khóa `POSTGRES_DB`, `POSTGRES_USER`
-và `POSTGRES_PASSWORD`; không đưa mật khẩu vào tài liệu. Với giá trị demo mặc
-định, mở SQL shell bằng lệnh PowerShell sau:
-
-```powershell
-docker exec -it icu-timescaledb psql -U icu_app -d icu
-```
-
-Nếu đã đổi user hoặc database trong `.env`, sửa hai tham số tương ứng. Trong
-`psql`, có thể kiểm tra nhanh:
-
-```sql
-SELECT COUNT(*) FROM chartevents;
-SELECT * FROM alerts ORDER BY trigger_time DESC LIMIT 20;
-```
-
-Trình tự quan sát đơn giản: chạy `.\run_icu_demo.ps1`, mở
-[Flink UI](http://localhost:8081) để xem job/checkpoint, mở
-[Kafka UI](http://localhost:8082) để xem message và group, mở
-[Gateway snapshot](http://localhost:8083/api/snapshot) để xem P01–P04, rồi
-truy vấn DB bằng SQL shell ở trên. Snapshot chỉ là ảnh chụp tại thời điểm gọi;
-cập nhật liên tục đi qua WebSocket.
-
-## Tài liệu liên quan
-
-[KAFKA_FLINK_FLOW.md](KAFKA_FLINK_FLOW.md) giải thích đường đi của bảy topic,
-Flink, Gateway và Storage Writer. [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md)
-ghi chi tiết chín bảng, bốn hypertable, khóa, index và cách commit offset.
-
-Kiểm thử tự động có thể chạy bằng:
-
-```powershell
-.\.venv\Scripts\python.exe -B -m unittest discover -s tests
-```
-
-Các file MIMIC gốc chỉ được đọc khi tạo hoặc kiểm tra seed; mô phỏng hằng ngày
-dùng [seed đã xác minh](config/db_reference_seed.json) và không phát lại số đo
-gốc từ MIMIC.
+Nếu chưa hiểu dữ liệu đi qua Kafka, Flink và Gateway như thế nào, đọc
+[KAFKA_FLINK_FLOW.md](KAFKA_FLINK_FLOW.md). Nếu cần hiểu chín bảng và cách
+Storage Writer ghi dữ liệu, đọc [docs/DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md).

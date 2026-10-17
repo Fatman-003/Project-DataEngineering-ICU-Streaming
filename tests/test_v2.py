@@ -438,11 +438,17 @@ class InfrastructureTests(unittest.TestCase):
                     "advertised.listeners=PLAINTEXT://localhost:9092\n"
                     "listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT\n")
         updated = updated_properties(original)
+        image_default = original.replace(
+            "advertised.listeners=PLAINTEXT://localhost:9092\n",
+            "advertised.listeners=PLAINTEXT://localhost:9092,CONTROLLER://localhost:9093\n")
+        self.assertEqual(updated_properties(image_default), updated)
         self.assertEqual(properties(updated)["log.dirs"], "/existing/data")
         self.assertEqual(updated_properties(updated), updated)
         self.assertTrue(all(properties(updated)[key] == value for key, value in PROPERTIES.items()))
         with self.assertRaises(ValueError):
             updated_properties(original.replace("node.id=1", "node.id=2"))
+        with self.assertRaises(ValueError):
+            updated_properties(original.replace("localhost:9092", "localhost:19092"))
 
     def test_fixed_ports_and_provectus_config(self):
         text = (PROJECT / "docker/flink/compose.yaml").read_text()
