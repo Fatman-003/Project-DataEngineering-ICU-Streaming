@@ -8,7 +8,9 @@ import time
 from aiohttp import ClientSession, WSMsgType
 from contracts import CORE_TOPICS, TOPICS, BUSINESS_TOPICS, DLQ_TOPIC, stay_key
 from event_time import event_timestamp_ms
-from run_icu_demo import run_demo, demo_events, PATIENTS
+from run_icu_demo import (run_demo, demo_events, PATIENTS, MAP_CHECK_SAMPLES,
+                          MAP_RECOVERY_OOO_SUFFIX, MAP_RECOVERY_STALE_SUFFIX)
+from runtime_config import RuntimeConfig, WindowAlertConfig
 from validation import parse_timestamp
 
 SPEED = 24
@@ -64,14 +66,70 @@ def read_pipeline(timeout=8):
         consumer.close()
 
 
+def validate_map_continuity(records, start):
+    """Assert real pipeline evidence for recovery, the gap boundary and stale MAP."""
+    policy = WindowAlertConfig()
+    origin = event_timestamp_ms({"event_time": start.isoformat()})
+    charts = records[BUSINESS_TOPICS["chartevents"]]
+    counts = {p["demo_id"]: sum(e["stay_id"] == p["stay_id"] for e in records[BUSINESS_TOPICS["alerts"]])
+              for p in PATIENTS}
+    if counts != {"P01": 0, "P02": 1, "P03": 0, "P04": 0}:
+        raise AssertionError(f"MAP continuity scenarios produced unexpected alerts: {counts}")
+    maps = {p["demo_id"]: sorted((e for e in charts if e["stay_id"] == p["stay_id"]
+                                and e["signal_name"] == "MAP"), key=event_timestamp_ms)
+            for p in PATIENTS}
+    for patient in ("P02", "P04"):
+        times = tuple((event_timestamp_ms(e) - origin) // 1000 for e in maps[patient])
+        if times != MAP_CHECK_SAMPLES[patient] or any(
+                e["valuenum"] >= policy.map_threshold for e in maps[patient]):
+            raise AssertionError(f"Missing MAP boundary observations for {patient}: {times}")
+    p02_gaps = [b - a for a, b in zip(MAP_CHECK_SAMPLES["P02"], MAP_CHECK_SAMPLES["P02"][1:])]
+    p04_gaps = [b - a for a, b in zip(MAP_CHECK_SAMPLES["P04"], MAP_CHECK_SAMPLES["P04"][1:])]
+    if max(p02_gaps) != policy.map_max_sample_gap_seconds or max(p04_gaps) != policy.map_max_sample_gap_seconds + 1:
+        raise AssertionError("FastVerify must exercise the exact MAP gap boundary and boundary +1s")
+    recoveries = [e for e in maps["P03"] if e["valuenum"] >= policy.map_threshold]
+    out_of_order = [e for e in recoveries if e["event_id"].endswith(MAP_RECOVERY_OOO_SUFFIX)]
+    if len(out_of_order) != 1 or out_of_order[0]["ordering_status"] != "OUT_OF_ORDER":
+        raise AssertionError("P03 must accept an out-of-order recovery within the low chain")
+    recovery_time = event_timestamp_ms(out_of_order[0])
+    if not (event_timestamp_ms(maps["P03"][0]) < recovery_time < event_timestamp_ms(maps["P03"][-1])):
+        raise AssertionError("P03 recovery must be inside the candidate episode")
+    if event_timestamp_ms(maps["P03"][-1]) - event_timestamp_ms(maps["P03"][0]) < policy.map_sustained_seconds * 1000:
+        raise AssertionError("P03 scenario would not expose an ignored recovery")
+    if event_timestamp_ms(recoveries[-1]) - recovery_time < policy.map_recovery_seconds * 1000:
+        raise AssertionError("P03 must sustain recovery for at least the configured confirmation window")
+    if any(e["valuenum"] < policy.map_threshold and recovery_time <= event_timestamp_ms(e)
+           <= event_timestamp_ms(recoveries[-1]) for e in maps["P03"]):
+        raise AssertionError("P03 confirmed recovery was interrupted by a low MAP")
+    stale = [e for e in records[DLQ_TOPIC] if (e.get("event_id") or "").endswith(MAP_RECOVERY_STALE_SUFFIX)]
+    if len(stale) != 1 or stale[0]["error_type"] != "LATE_EVENT" or any(
+            e["event_id"].endswith(MAP_RECOVERY_STALE_SUFFIX) for e in charts):
+        raise AssertionError("Too-late recovery must go to DLQ and never reach accepted MAP state")
+    return {"P02_uninterrupted_low": "PASS", "P02_alert_count": 1,
+            "P03_confirmed_recovery": "PASS", "P03_alert_count": 0,
+            "90s_gap_boundary": "PASS", ">90s_gap_reset": "PASS",
+            "accepted_OOO_recovery": "PASS", "too_late_recovery": "DLQ / no retroactive mutation: PASS",
+            "lateness_tolerance_seconds": RuntimeConfig().max_out_of_orderness_seconds,
+            "map_sample_gap_seconds": policy.map_max_sample_gap_seconds,
+            "confirmation_seconds": policy.map_sustained_seconds,
+            "recovery_confirmation_seconds": policy.map_recovery_seconds}
+
+
 def validate_pipeline(records, start, ws_alerts, snapshot, message_counts):
-    expected = list(demo_events(start=start))
+    expected = list(demo_events(start=start, map_episode_checks=True))
     raw = [(topic, event) for topic in TOPICS.values() for event in records[topic]]
     if Counter((topic, e["event_id"]) for topic, e in raw) != Counter((topic, e["event_id"]) for topic, e in expected):
         raise AssertionError("FastVerify skipped or changed the six-minute logical scenario")
     charts = records[BUSINESS_TOPICS["chartevents"]]
     labs = records[BUSINESS_TOPICS["labevents"]]
-    if len(charts) != 1441 or len(labs) != 8 or len(records[DLQ_TOPIC]) != 3:
+    rejected_suffixes = ("-invalid", "-late", MAP_RECOVERY_STALE_SUFFIX)
+    expected_charts = {e["event_id"] for topic, e in expected if topic == TOPICS["chartevents"]
+                       and not e["event_id"].endswith(rejected_suffixes)}
+    expected_labs = {e["event_id"] for topic, e in expected if topic == TOPICS["labevents"]}
+    if (Counter(e["event_id"] for e in charts) != Counter(expected_charts)
+            or Counter(e["event_id"] for e in labs) != Counter(expected_labs)
+            or Counter(e["error_type"] for e in records[DLQ_TOPIC]) !=
+            {"DUPLICATE_EVENT": 1, "VALUE_ERROR": 1, "LATE_EVENT": 2}):
         raise AssertionError("Unexpected CLEAN/DLQ counts")
     if not any(e["event_id"].endswith("-ooo") and e["ordering_status"] == "OUT_OF_ORDER" for e in charts):
         raise AssertionError("Tolerated out-of-order observation was not accepted")
@@ -94,11 +152,13 @@ def validate_pipeline(records, start, ws_alerts, snapshot, message_counts):
     origin = event_timestamp_ms({"event_time": start.isoformat()})
     first = (event_timestamp_ms({"event_time": alert["episode_start"]}) - origin) / 1000
     qualifying = (event_timestamp_ms({"event_time": alert["trigger_time"]}) - origin) / 1000
-    if (first, qualifying, qualifying - first) != (13, 313, 300):
+    confirmation = WindowAlertConfig().map_sustained_seconds
+    if (first, qualifying, qualifying - first) != (13, 13 + confirmation, confirmation):
         raise AssertionError("Clinical confirmation timestamps changed")
     return {"logical_duration_seconds": 360, "speed_factor": SPEED,
             "logical_first_p02_low": "00:13", "logical_qualifying_p02_map": "05:13",
             "clinical_confirmation_seconds": qualifying - first,
+            "map_episode_continuity": validate_map_continuity(records, start),
             **transport_timings(*ws_alerts[0]), "alert_counts": counts,
             "topic_record_counts": {topic: len(events) for topic, events in records.items()},
             "websocket_message_counts": dict(message_counts), "result": "PASS"}
@@ -127,7 +187,8 @@ async def verify_async():
             collector = asyncio.create_task(receive())
             try:
                 producer_began = time.monotonic()
-                start = await asyncio.to_thread(run_demo, speed=SPEED, quiet=True, skip_missed_ticks=False)
+                start = await asyncio.to_thread(run_demo, speed=SPEED, quiet=True, skip_missed_ticks=False,
+                                                map_episode_checks=True)
                 producer_seconds = time.monotonic() - producer_began
                 deadline = time.monotonic() + 5
                 while True:

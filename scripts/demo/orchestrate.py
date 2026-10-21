@@ -558,40 +558,54 @@ class Orchestrator:
                 self.report["startup_seconds"] = time.monotonic() - invocation_began
                 if self.args.fast_verify:
                     from fast_verify import verify, SPEED
-                    self.mark(f"Fast end-to-end verification ({SPEED}x, unchanged clinical rule)")
+                    self.mark(f"Fast end-to-end verification ({SPEED}x event-time, configured alert rule)")
                     self.report["verification"] = verify()
                     from db_verify import verify_database
                     self.report["database_verification"] = verify_database()
                     self.report.update(outcome="verified", total_seconds=time.monotonic() - invocation_began)
                     self.save_report()
-                    print(json.dumps({"FAST ALERT VERIFICATION": self.report["verification"],
+                    print(json.dumps({"MAP EPISODE CONTINUITY": self.report["verification"].get("map_episode_continuity"),
+                                      "FAST ALERT VERIFICATION": {key: value for key, value in
+                                          self.report["verification"].items() if key != "map_episode_continuity"},
                                       "DATABASE VERIFICATION": self.report["database_verification"],
                                       "startup_seconds": self.report["startup_seconds"],
                                       "total_seconds": self.report["total_seconds"]}, indent=2), flush=True)
                     return 0
-                self.mark("Realtime simulator")
-                print(f"Starting {self.args.duration_minutes:g}-minute realtime ICU simulation "
-                      f"at {self.args.interval_seconds:g}s intervals...", flush=True)
                 began = time.monotonic()
                 start_override = None
                 if self.args.keep_database_data and self.report.get("retained_event_start_after"):
                     retained = datetime.fromisoformat(self.report["retained_event_start_after"])
                     start_override = max(datetime.now(timezone.utc).replace(microsecond=0),
                                          retained + timedelta(seconds=1))
-                start = run_demo(duration_minutes=self.args.duration_minutes,
-                                 interval_seconds=self.args.interval_seconds, loop=self.args.loop,
-                                 raw=self.args.raw, start=start_override)
+                if self.args.high_frequency is not None:
+                    from high_frequency import run_high_frequency
+                    self.mark(f"Synthetic high-frequency simulator HF{self.args.high_frequency}")
+                    result = run_high_frequency(self.args.high_frequency, self.args.duration_minutes,
+                                                start=start_override)
+                    self.report.update(high_frequency=result, event_start=result["event_start"])
+                else:
+                    self.mark("Realtime simulator")
+                    print(f"Starting {self.args.duration_minutes:g}-minute realtime ICU simulation "
+                          f"at {self.args.interval_seconds:g}s intervals...", flush=True)
+                    start = run_demo(duration_minutes=self.args.duration_minutes,
+                                     interval_seconds=self.args.interval_seconds, loop=self.args.loop,
+                                     raw=self.args.raw, start=start_override)
+                    self.report["event_start"] = start.isoformat()
                 self.report.update(outcome="completed", producer_started=True,
-                                   event_start=start.isoformat(), elapsed_seconds=time.monotonic() - began)
+                                   elapsed_seconds=time.monotonic() - began)
                 self.save_report()
                 print("[OK] Demo finished. Kafka, Flink, Kafka UI and Gateway remain available.", flush=True)
                 return 0
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as error:
+            if hasattr(error, "result"):
+                self.report["high_frequency"] = error.result
             self.report["outcome"] = "interrupted"
             self.save_report()
             print("\n[INFO] Producer stopped. Infrastructure remains running for inspection.", flush=True)
             return 130
         except Exception as error:
+            if hasattr(error, "result"):
+                self.report["high_frequency"] = error.result
             self.report.update(outcome="failed", failed_step=self.step, error=str(error))
             self.save_report()
             print(f"[ERROR] {self.step}: {error}", file=sys.stderr, flush=True)
@@ -609,6 +623,7 @@ def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--duration-minutes", type=positive, default=6)
     parser.add_argument("--interval-seconds", type=positive, default=1)
+    parser.add_argument("--high-frequency", type=int, choices=(100, 200), help="Opt-in synthetic samples/s/signal")
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--raw", action="store_true")
     parser.add_argument("--fast-verify", action="store_true", help="Six logical minutes at 24x with live Kafka/WebSocket assertions")
@@ -617,6 +632,14 @@ def arguments(argv=None):
     parser.add_argument("--skip-docker-start", action="store_true")
     parser.add_argument("--state-report", help="Optional verification output; normal runs create no report files")
     args = parser.parse_args(argv)
+    if args.high_frequency is not None:
+        if args.fast_verify or args.interval_seconds != 1 or args.loop or args.raw:
+            parser.error("HighFrequency cannot be combined with FastVerify, Loop, Raw, or IntervalSeconds overrides")
+        from high_frequency import profile
+        try:
+            profile(args.high_frequency, args.duration_minutes)
+        except ValueError as error:
+            parser.error(str(error))
     if args.fast_verify and (args.duration_minutes != 6 or args.interval_seconds != 1 or args.loop or args.raw or args.keep_database_data):
         parser.error("FastVerify uses a clean fixed six-minute scenario without Loop, Raw, or KeepDatabaseData")
     return args

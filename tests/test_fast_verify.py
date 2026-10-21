@@ -14,6 +14,8 @@ import orchestrate
 import run_icu_demo as simulator
 from fast_verify import transport_timings, SPEED
 from contracts import TOPICS, CORE_TOPICS
+from event_time import event_timestamp_ms
+from runtime_config import RuntimeConfig, WindowAlertConfig
 from test_orchestration import Clock, FakeProducer
 
 
@@ -44,10 +46,40 @@ class FastVerifyTests(unittest.TestCase):
         producer.poll = poll
         with patch("confluent_kafka.Producer", return_value=producer), patch.object(
                 simulator.time, "monotonic", clock.monotonic), patch.object(simulator.time, "sleep", clock.sleep):
-            simulator.run_demo(speed=SPEED, start=simulator.DEFAULT_START, quiet=True, skip_missed_ticks=False)
-        self.assertEqual([(r[1], r[3]) for r in producer.records], list(simulator.demo_events()))
+            simulator.run_demo(speed=SPEED, start=simulator.DEFAULT_START, quiet=True, skip_missed_ticks=False,
+                               map_episode_checks=True)
+        self.assertEqual([(r[1], r[3]) for r in producer.records],
+                         list(simulator.demo_events(map_episode_checks=True)))
         self.assertAlmostEqual(clock.now, 1000 + 360 / SPEED, places=6)
-        self.assertEqual(len(producer.records), 1452)
+        self.assertEqual(len(producer.records), 1346)
+
+    def test_fast_inputs_require_gap_reset_and_out_of_order_recovery(self):
+        records = list(simulator.demo_events(map_episode_checks=True))
+        origin = event_timestamp_ms(simulator.chart_event(simulator.PATIENTS[0], 'MAP', 0,
+                                                          simulator.DEFAULT_START))
+        maps = {p['demo_id']: [e for topic, e in records if topic == TOPICS['chartevents']
+                              and e['stay_id'] == p['stay_id'] and e['signal_name'] == 'MAP']
+                for p in simulator.PATIENTS}
+        offsets = lambda events: [(event_timestamp_ms(e) - origin) // 1000 for e in events]
+        p02 = [e for e in maps['P02'] if not e['event_id'].endswith(simulator.MAP_RECOVERY_STALE_SUFFIX)]
+        p02_times, p04_times = offsets(p02), offsets(maps['P04'])
+        self.assertEqual(max(b - a for a, b in zip(p02_times, p02_times[1:])),
+                         WindowAlertConfig().map_max_sample_gap_seconds)
+        self.assertEqual(max(b - a for a, b in zip(p04_times, p04_times[1:])),
+                         WindowAlertConfig().map_max_sample_gap_seconds + 1)
+        recovery = next(e for e in maps['P03'] if e['event_id'].endswith(simulator.MAP_RECOVERY_OOO_SUFFIX))
+        index = maps['P03'].index(recovery)
+        self.assertGreater(event_timestamp_ms(maps['P03'][index - 1]), event_timestamp_ms(recovery))
+        self.assertLess(event_timestamp_ms(maps['P03'][index - 1]) - event_timestamp_ms(recovery),
+                        RuntimeConfig().max_out_of_orderness_seconds * 1000)
+        normal = sorted((e for e in maps['P03'] if e['valuenum'] >= WindowAlertConfig().map_threshold),
+                        key=event_timestamp_ms)
+        self.assertGreaterEqual(event_timestamp_ms(normal[-1]) - event_timestamp_ms(normal[0]),
+                                WindowAlertConfig().map_recovery_seconds * 1000)
+        self.assertFalse(any(e['valuenum'] < WindowAlertConfig().map_threshold and
+                             event_timestamp_ms(normal[0]) <= event_timestamp_ms(e) <= event_timestamp_ms(normal[-1])
+                             for e in maps['P03']))
+        self.assertTrue(any(e['event_id'].endswith(simulator.MAP_RECOVERY_STALE_SUFFIX) for e in maps['P02']))
 
     def test_latency_is_real_clock_not_trigger_event_time(self):
         payload = {"alert_emitted_at": "2026-10-17T00:00:00.100Z",

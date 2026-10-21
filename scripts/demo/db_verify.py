@@ -24,7 +24,7 @@ COMPARE = {
     "labevents": ("event_id", "mapped_stay_id", "lab_name", "event_time", "valuenum"),
     "vitals_15m": ("aggregate_id", "stay_id", "signal_name", "window_start", "window_end",
                    "mean", "min", "max"),
-    "alerts": ("alert_id", "stay_id", "alert_type", "trigger_time", "threshold_value"),
+    "alerts": ("alert_id", "stay_id", "alert_type", "episode_start", "trigger_time", "threshold_value"),
 }
 
 
@@ -82,7 +82,7 @@ def matching_row(connection, table, event):
         raise AssertionError(f"Expected one DB row for {table}.{identity}={event[identity]}, got {len(rows)}")
     for column, stored in zip(columns, rows[0]):
         expected = event[column]
-        if column in ("event_time", "window_start", "window_end", "trigger_time"):
+        if column in ("event_time", "window_start", "window_end", "episode_start", "trigger_time"):
             expected = parse_time(expected)
         if isinstance(expected, (int, float)) and type(expected) is not bool:
             if not math.isclose(stored, expected, rel_tol=1e-10, abs_tol=1e-10):

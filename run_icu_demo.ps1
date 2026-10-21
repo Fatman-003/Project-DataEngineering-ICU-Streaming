@@ -1,6 +1,8 @@
 param(
     [double]$DurationMinutes = 6,
     [double]$IntervalSeconds = 1,
+    [ValidateSet(100, 200)]
+    [int]$HighFrequency,
     [switch]$Loop,
     [switch]$Raw,
     [switch]$FastVerify,
@@ -22,6 +24,7 @@ $DemoArguments = @('-u', '-B', (Join-Path $PSScriptRoot 'scripts\demo\orchestrat
 if ($Loop) { $DemoArguments += '--loop' }
 if ($Raw) { $DemoArguments += '--raw' }
 if ($FastVerify) { $DemoArguments += '--fast-verify' }
+if ($PSBoundParameters.ContainsKey('HighFrequency')) { $DemoArguments += @('--high-frequency', $HighFrequency.ToString()) }
 if ($KeepDatabaseData) { $DemoArguments += '--keep-database-data' }
 if ($SkipBuild) { $DemoArguments += '--skip-build' }
 if ($SkipDockerStart) { $DemoArguments += '--skip-docker-start' }
