@@ -115,6 +115,14 @@ tính từ `icu.v2.vitals.15m`; TimescaleDB không tính lại. Với đúng m�
 `SUSTAINED_HYPOTENSION` là cảnh báo hạ huyết áp kéo dài theo MAP, không phải
 chẩn đoán sepsis. RAW topic và DLQ không đi vào bốn bảng nghiệp vụ này.
 
+`alerts` lưu cảnh báo mà Flink đã phát, không tái dựng episode từ dữ liệu DB.
+MAP hồi phục ảnh hưởng trạng thái episode realtime nhưng không xóa alert đã
+lưu; recovery quá watermark đi vào DLQ và không sửa ngược lịch sử alert.
+Recovery candidate 30 giây chỉ nằm trong processing state, không thêm bảng/cột.
+`episode_start` đến `trigger_time` có thể dài hơn 300 giây vì transient recovery
+không tính vào low evidence. Chi tiết ở
+[ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md](ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md).
+
 Logical ID của các bản ghi là `event_id`, `aggregate_id` hoặc `alert_id`.
 Physical primary key còn chứa chiều thời gian vì unique index của hypertable
 phải bao gồm cột partition thời gian. Do đó gửi lại **cùng Kafka message**

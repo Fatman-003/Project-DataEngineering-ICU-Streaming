@@ -105,9 +105,11 @@ icu.v2.labevents -> parse / kiểm tra / loại trùng / ordering
 Flink kiểm tra JSON, trường bắt buộc, bốn bộ định danh được phép, cặp
 `itemid`/tín hiệu/đơn vị, timestamp, số hữu hạn và giới hạn kỹ thuật. Dedup
 dùng stream cùng `event_id` trong managed state với TTL 24 giờ theo processing
-time. Watermark cho phép tối đa 30 giây đảo thứ tự event-time; event tại hoặc
-trước watermark hiệu lực bị coi là quá muộn. Event cũ hơn nhưng vẫn trong
-ngưỡng được gắn `OUT_OF_ORDER`. Input rảnh không tự tạo quan sát giả. Checkpoint
+time. Watermark được tạo với bounded out-of-order tolerance 30 giây; event tại
+hoặc trước watermark hiệu lực lúc đến bị coi là quá muộn. Event cũ hơn mẫu
+đã thấy nhưng còn sau watermark được gắn `OUT_OF_ORDER`. Đây không phải phép
+so sánh đồng hồ thực lúc nhận với `event_time`; watermark hiệu lực mới là
+ranh giới quyết định. Input rảnh không tự tạo quan sát giả. Checkpoint
 bình thường chạy mỗi 10 giây; FastVerify dùng 2 giây để rút ngắn bước kiểm tra.
 
 Event malformed, sai schema, sai giá trị, trùng hoặc quá muộn đi vào DLQ.
@@ -128,28 +130,57 @@ cuối cửa sổ không được tính. Mỗi cửa sổ bệnh nhân/tín hi�
 đóng cửa sổ, còn cửa sổ đang mở cần event sau đó mới phát. **Không có thống kê
 5 phút** và TimescaleDB không tính lại thống kê này.
 
-## Cảnh báo MAP và hai loại thời gian
+## Cảnh báo MAP: thứ tự, tính liên tục và thời gian xác nhận
 
-Quy tắc hiện tại: **MAP <65 liên tục ít nhất 300 giây event-time**, khoảng cách
-giữa hai mẫu MAP được chấp nhận không quá **90 giây**. Khoảng cách lớn hơn bắt
-đầu episode mới. MAP ≥65 kết thúc episode và cho phép phát cảnh báo lần sau.
-Mỗi episode đủ điều kiện chỉ phát một alert `ACTIVE`; hệ thống không có luồng
-resolution và không chẩn đoán sepsis.
+Cấu hình gốc nằm ở [runtime_config.py](jobs/flink/runtime_config.py). Các giá
+trị sau phục vụ mục đích riêng, không thay thế cho nhau:
+
+| Giá trị | Ý nghĩa | Cách áp dụng |
+|---|---|---|
+| 30 giây | Out-of-order/lateness tolerance của stream | Tạo bounded watermark; event tại hoặc trước watermark hiệu lực đi vào DLQ dưới dạng `LATE_EVENT`. |
+| 90 giây | Khoảng cách tối đa giữa hai quan sát MAP được chấp nhận | Tính bằng chênh lệch `event_time` của hai mẫu MAP liên tiếp; đúng 90 giây vẫn được phép, lớn hơn 90 giây phá vỡ tính liên tục. |
+| 300 giây | Hypotension confirmation | Tổng low evidence của cùng episode phải đủ 300 giây event-time; không cộng khoảng recovery candidate. |
+| 30 giây | Recovery confirmation | MAP ≥65 mở candidate; recovery đủ 30 giây mới kết thúc episode và re-arm. Đây là engineering debounce, riêng với tolerance out-of-order. |
+
+Ví dụ hai mẫu MAP có event-time `10:00:00` và `10:00:06` cách nhau 6 giây về
+quan sát. Mẫu sau đến sai thứ tự 20 giây có thể vẫn được chấp nhận nếu nó còn
+sau watermark. Độ đến muộn và khoảng cách giữa hai mẫu là hai khái niệm khác nhau.
+
+Chỉ **MAP được chấp nhận** điều khiển rule. HR, SpO2, RR, SBP hoặc DBP bình
+thường không reset hay xác nhận recovery. MAP <65 cộng low evidence; MAP ≥65
+mở `RECOVERY_CANDIDATE`. Nếu thấp lại trước 30 giây, episode được giữ nhưng
+khoảng normal không tính là low time. Recovery đạt 30 giây mới xóa evidence
+cũ và re-arm. Gap MAP >90 giây vẫn phá vỡ continuity, kể cả trong recovery.
+Mỗi episode đủ điều kiện phát đúng một alert `ACTIVE`.
+
+MAP đúng thứ tự cập nhật state theo từng quan sát. Accepted out-of-order MAP
+xét lại phần managed history chưa chốt theo event-time; normal MAP thắng nếu
+cùng timestamp. Event tại hoặc trước watermark đi vào `LATE_EVENT`/DLQ, không
+đổi trạng thái realtime. Alert đã gửi vẫn bất biến, kể cả khi lịch sử còn
+được chấp nhận tới sau đó; không có luồng correction/retraction hay resolution.
+Hệ thống chọn ranh giới freshness để giữ cảnh báo kịp thời, không tái dựng
+lâm sàng hoàn hảo cho dữ liệu lịch sử đến trễ tùy ý.
+
+Ví dụ 150 giây low + 20 giây normal + 150 giây low đạt đủ evidence tại T+320,
+không phải T+300. Chi tiết state machine, biên 29/30 giây và các cơ chế giảm
+false alarm nằm ở [ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md](docs/ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md).
 
 ```text
 MAP đủ điều kiện -> Flink -> icu.v2.alerts -> Kafka -> Realtime Gateway
                                                -> WebSocket -> UI client
 ```
 
-**300 giây là thời gian xác nhận lâm sàng có chủ ý**, tính bằng event-time.
-Khi một mẫu hợp lệ chứng minh đủ thời gian, Flink phát alert ngay. Watermark
-vẫn dùng để xét lateness, sắp lịch sử và đóng cửa sổ, không bắt alert chờ.
-Các mẫu MAP out-of-order đã biết được xét theo event-time; recovery thắng nếu
-cùng timestamp. Alert đã gửi không bị thu hồi nếu sau đó nhận thêm lịch sử
-được chấp nhận.
-
+**300 giây là low evidence của episode**, tính bằng event-time. Khi một mẫu
+MAP thấp chứng minh đủ evidence, Flink phát alert ngay. Watermark dùng để xét
+lateness, rút gọn lịch sử và đóng cửa sổ; không bắt alert chờ thêm 30/90 giây.
 P02 bắt đầu MAP thấp ở mốc logic `00:13`, đủ điều kiện ở `05:13`. P03 hồi phục
-trước 300 giây nên không có alert. Độ trễ vận chuyển là khoảng thời gian **sau
+giữa chuỗi thấp rồi thấp lại; episode mới chưa đủ 300 giây nên không có alert.
+FastVerify dùng lịch MAP riêng: P02 có các mẫu cách nhau đúng 90 giây, P04 có gap 91 giây,
+recovery P03 ở `02:00` đến tại `02:10` rồi được duy trì đủ 30 giây để xác nhận,
+và recovery P02 quá muộn đến sau alert.
+Các ca này đi qua cùng Flink operator; chỉ lịch phát input kiểm thử thay đổi,
+không rút ngắn các ngưỡng hoặc thêm thời gian chờ 30/90 giây.
+Độ trễ vận chuyển là khoảng thời gian **sau
 khi Flink phát**: Flink → Kafka → Gateway → WebSocket, không phải 300 giây xác
 nhận. `alert_emitted_at`, `gateway_received_at` và `websocket_received_at` là
 các mốc đồng hồ thực được FastVerify dùng để đo. Mục tiêu local dưới một giây,
@@ -203,7 +234,8 @@ Chi tiết ở [DATABASE_DESIGN.md](docs/DATABASE_DESIGN.md).
 ## Theo dõi hệ thống đang chạy
 
 1. Chạy `.\run_icu_demo.ps1` để xem demo theo thời gian thực; thêm `-FastVerify`
-   để chạy cùng kịch bản ở tốc độ 24×. Startup reset bảy V2 topic, Gateway,
+   để kiểm tra cùng pipeline ở tốc độ 24× với các ca MAP continuity nêu trên.
+   Startup reset bảy V2 topic, Gateway,
    Flink job cũ và dữ liệu runtime DB. Chỉ chạy một orchestrator mỗi lần.
 2. Mở [Kafka UI](http://localhost:8082), chọn `ICU-LOCAL`, xem
    `icu.v2.chartevents`: P01–P04 phải có RAW event. Kiểm tra lab thưa ở

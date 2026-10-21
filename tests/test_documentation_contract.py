@@ -9,6 +9,7 @@ sys.path[:0] = [str(PROJECT / "jobs/flink"), str(PROJECT / "services/storage_wri
 
 from contracts import CORE_TOPICS
 from config import CORE_TABLES, GROUP_ID as WRITER_GROUP, TOPIC_TABLE
+from runtime_config import RuntimeConfig, WindowAlertConfig
 
 
 def read(relative):
@@ -21,6 +22,7 @@ class DocumentationContractTests(unittest.TestCase):
         cls.readme = read("README.md")
         cls.flow = read("KAFKA_FLINK_FLOW.md")
         cls.design = read("docs/DATABASE_DESIGN.md")
+        cls.alert_rules = read("docs/ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md")
         cls.schema = read("docker/timescaledb/init/001_schema.sql")
         cls.hyper = read("docker/timescaledb/init/002_hypertables.sql")
         cls.indexes = read("docker/timescaledb/init/003_indexes.sql")
@@ -38,7 +40,7 @@ class DocumentationContractTests(unittest.TestCase):
             self.assertIn(key, self.readme)
         self.assertIn("icu.v2.deadletter", self.readme)
         self.assertNotIn("icu_local_demo_only_2026", self.readme)
-        for text in (self.readme, self.flow, self.design):
+        for text in (self.readme, self.flow, self.design, self.alert_rules):
             self.assertNotRegex(text, r"(?i)TICKET[- ]?0\d+|PLANNED\s*[—-]\s*TICKET|database not implemented|future Storage Writer")
         self.assertNotRegex(self.readme, r"(?i)completion report|tests passed|next ticket|manual verification pending")
 
@@ -55,6 +57,31 @@ class DocumentationContractTests(unittest.TestCase):
         self.assertEqual(documented_mapping, TOPIC_TABLE)
         self.assertIn("point-in-time", self.flow)
         self.assertIn("ws://localhost:8083/ws", self.flow)
+
+    def test_documented_freshness_continuity_and_confirmation_match_config(self):
+        runtime, business = RuntimeConfig(), WindowAlertConfig()
+        self.assertEqual((runtime.max_out_of_orderness_seconds, business.map_max_sample_gap_seconds,
+                          business.map_sustained_seconds, business.map_threshold,
+                          business.map_recovery_seconds), (30, 90, 300, 65, 30))
+        for seconds in (runtime.max_out_of_orderness_seconds, business.map_max_sample_gap_seconds,
+                        business.map_sustained_seconds):
+            self.assertIn(f"| {seconds} giây |", self.flow)
+        for meaning in ("MAP ≥65", "HR, SpO2, RR, SBP", "LATE_EVENT", "correction/retraction"):
+            self.assertIn(meaning, self.flow)
+
+    def test_alert_guide_matches_recovery_and_low_evidence_policy(self):
+        business, runtime = WindowAlertConfig(), RuntimeConfig()
+        for value in (f"<{business.map_threshold:g} mmHg", f"≥{business.map_threshold:g} mmHg",
+                      f"{business.map_sustained_seconds} giây event-time",
+                      f"{business.map_recovery_seconds} giây event-time",
+                      f"≤{business.map_max_sample_gap_seconds} giây",
+                      f"| Out-of-order/lateness tolerance | {runtime.max_out_of_orderness_seconds} giây"):
+            self.assertIn(value, self.alert_rules)
+        for required in ("RECOVERY_CANDIDATE", "T+320", "T+300", "29 giây", "30 giây",
+                         "quyết định kỹ thuật", "không phải chẩn đoán", "One alert per episode"):
+            self.assertIn(required, self.alert_rules)
+        for text in (self.flow, self.readme):
+            self.assertIn("docs/ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md", text)
 
     def test_design_tables_hypertables_and_physical_keys_match_sql(self):
         schema_tables = set(re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", self.schema))

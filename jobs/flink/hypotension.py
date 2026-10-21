@@ -1,6 +1,7 @@
-"""Immediate MAP alerts from accepted observations; watermarks compact history only.
+"""Incremental MAP evidence with event-time recovery debounce.
 
-Known observations are replayed in event-time order, with recovery winning ties.
+In-order observations advance cached state directly. Out-of-order/tied buckets
+replay only unfinalized history, with a normal MAP winning timestamp ties.
 An urgent alert cannot anticipate a recovery that has not arrived yet; delivery
 is not retracted if a subsequently accepted out-of-order recovery changes history.
 """
@@ -39,18 +40,38 @@ def alert_candidate(state, record, config):
 
 
 def advance_episode(state, record, config):
+    """Advance one ordered MAP observation; only low intervals add evidence.
+
+    An interval follows its preceding observation up to this timestamp, provided
+    the sample gap is valid. A high MAP closes that low interval and starts a
+    recovery candidate. A later MAP confirms recovery at >=30s, including a low
+    observation which ends a normal interval of that length. Watermarks alone
+    never supply low or recovery evidence.
+    """
     timestamp = event_timestamp_ms(record["event"])
     value = record["event"]["valuenum"]
-    if state is not None and timestamp < state["last_low_ms"]:
+    if state is not None and timestamp < state["last_map_ms"]:
         raise ValueError("MAP records must be finalized in event-time order")
-    if value >= config.map_threshold:
-        return None, []
-    if state is not None and timestamp - state["last_low_ms"] > config.map_max_sample_gap_seconds * 1000:
+    if state is not None and timestamp - state["last_map_ms"] > config.map_max_sample_gap_seconds * 1000:
         state = None
-    state = ({"start_ms": timestamp, "last_low_ms": timestamp, "alerted": False}
-             if state is None else dict(state, last_low_ms=timestamp))
+    if state is not None and state["recovery_start_ms"] is not None:
+        if timestamp - state["recovery_start_ms"] >= config.map_recovery_seconds * 1000:
+            state = None  # Confirmed recovery: old low evidence and re-arm flag end here.
+        else:
+            state = dict(state, last_map_ms=timestamp,
+                         recovery_start_ms=None if value < config.map_threshold else state["recovery_start_ms"])
+    elif state is not None:
+        state = dict(state, low_ms=state["low_ms"] + timestamp - state["last_map_ms"],
+                     last_map_ms=timestamp,
+                     recovery_start_ms=timestamp if value >= config.map_threshold else None)
+    if state is None:
+        if value >= config.map_threshold:
+            return None, []
+        state = {"start_ms": timestamp, "last_map_ms": timestamp, "low_ms": 0,
+                 "recovery_start_ms": None, "alerted": False}
     results = []
-    if not state["alerted"] and timestamp - state["start_ms"] >= config.map_sustained_seconds * 1000:
+    if (value < config.map_threshold and not state["alerted"]
+            and state["low_ms"] >= config.map_sustained_seconds * 1000):
         results.append(alert_candidate(state, record, config))
         state["alerted"] = True
     return state, results
@@ -79,15 +100,19 @@ def flink_hypotension(config, ttl_hours):
         def open(self, runtime_context):
             pending = MapStateDescriptor("map-pending", Types.LONG(), Types.STRING())
             episode = ValueStateDescriptor("map-episode", Types.STRING())
+            observed = ValueStateDescriptor("map-observed", Types.STRING())
             emitted = MapStateDescriptor("map-emitted-episodes", Types.LONG(), Types.BOOLEAN())
-            for descriptor in (pending, episode, emitted):
+            for descriptor in (pending, episode, observed, emitted):
                 descriptor.enable_time_to_live(managed_ttl(ttl_hours))
             self.pending = runtime_context.get_map_state(pending)
             self.episode = runtime_context.get_state(episode)
+            self.observed = runtime_context.get_state(observed)
             self.emitted = runtime_context.get_map_state(emitted)
 
         def process_element(self, value, ctx):
             record = json.loads(value)
+            if record["event"]["signal_name"] != "MAP":
+                return []  # Only MAP observations can recover/re-arm this rule.
             timestamp = event_timestamp_ms(record["event"])
             if timestamp <= ctx.timer_service().current_watermark():
                 return []  # Defensive: upstream late classification normally rejects it.
@@ -96,10 +121,22 @@ def flink_hypotension(config, ttl_hours):
                 [record] if current is None else [json.loads(current), record], config.map_threshold)
             self.pending.put(timestamp, encode(representative))
             ctx.timer_service().register_event_time_timer(timestamp)
-            current_episode = self.episode.value()
-            state, candidate = evaluate_pending(
-                None if current_episode is None else json.loads(current_episode),
-                [json.loads(value) for _, value in sorted(self.pending.items())], config)
+            cached = self.observed.value()
+            cached = None if cached is None else json.loads(cached)
+            if cached is not None and timestamp > cached["last_timestamp_ms"]:
+                state, results = advance_episode(cached["state"], representative, config)
+                candidate = results[0] if results else None
+                last_timestamp = timestamp
+            else:
+                # Only accepted OOO/equal-time updates replay the short pending
+                # tail; the finalized prefix stays incremental in map-episode.
+                current_episode = self.episode.value()
+                ordered = sorted(self.pending.items())
+                state, candidate = evaluate_pending(
+                    None if current_episode is None else json.loads(current_episode),
+                    [json.loads(value) for _, value in ordered], config)
+                last_timestamp = ordered[-1][0]
+            self.observed.update(encode({"last_timestamp_ms": last_timestamp, "state": state}))
             if candidate is not None and not self.emitted.contains(state["start_ms"]):
                 self.emitted.put(state["start_ms"], True)
                 candidate["alert_emitted_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -129,4 +166,5 @@ def attach_hypotension(clean, config, ttl_hours):
     return clean.filter(lambda value: json.loads(value)["event"]["signal_name"] == "MAP").key_by(
         lambda value: str(json.loads(value)["event"]["stay_id"]), key_type=Types.STRING()).process(
         flink_hypotension(config, ttl_hours), output_type=Types.STRING()).name(
-        "MAP <65 sustained 300 seconds").uid("v2-map-rule")
+        f"MAP <{config.map_threshold:g}: {config.map_sustained_seconds}s low evidence, "
+        f"{config.map_recovery_seconds}s recovery").uid("v2-map-rule")

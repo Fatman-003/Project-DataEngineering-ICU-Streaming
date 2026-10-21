@@ -16,6 +16,7 @@ sys.path.insert(0, str(PROJECT / "jobs/flink"))
 from registry import load_patients, IDENTITY_FIELDS
 from contracts import BUSINESS_TOPICS, CHART_FIELDS, parse_event
 from validation import validate_event, parse_timestamp
+from runtime_config import HYPOTENSION_MAP_THRESHOLD, HYPOTENSION_CONFIRMATION_SECONDS
 
 GROUP_ID = "icu-ui-gateway-v2"
 SUBSCRIPTIONS = tuple(BUSINESS_TOPICS[key] for key in ("chartevents", "aggregates", "alerts"))
@@ -71,7 +72,9 @@ class GatewayState:
             if len(self.recent_alert_ids) > 4096:
                 self.recent_alert_ids.popitem(last=False)
             payload = dict(common, severity=event["severity"],
-                           message="MAP < 65 sustained for 5 minutes", trigger_time=event["trigger_time"],
+                           message=(f"MAP < {HYPOTENSION_MAP_THRESHOLD:g} sustained for "
+                                    f"{HYPOTENSION_CONFIRMATION_SECONDS / 60:g} minutes"),
+                           trigger_time=event["trigger_time"],
                            alert_id=alert_id, status=event["status"])
             if "alert_emitted_at" in event:
                 parse_timestamp(event["alert_emitted_at"])

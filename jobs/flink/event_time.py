@@ -10,7 +10,9 @@ def event_timestamp_ms(event):
 
 
 def classify_event(timestamp_ms, watermark_ms, previous_max_ms):
-    # Flink has already declared timestamps <= its effective watermark complete.
+    # The configured bound generates watermarks; the effective watermark at
+    # arrival is authoritative (not wall-clock arrival time minus event_time).
+    # Timestamps <= this watermark are stale and cannot rewrite alert history.
     if timestamp_ms <= watermark_ms:
         return "LATE_EVENT"
     if previous_max_ms is not None and timestamp_ms < previous_max_ms:
