@@ -1,13 +1,16 @@
-"""Fixed V2 computation settings; environment overrides concern infrastructure only."""
+"""Central business timing settings; environment overrides concern infrastructure only."""
 import os
 from dataclasses import dataclass
 from contracts import BUSINESS_TOPICS, DLQ_TOPIC
 DLQ_MAX_MESSAGE_BYTES = 8 * 1024 * 1024
-MAX_OUT_OF_ORDER_SECONDS = 30
+MAX_OUT_OF_ORDER_SECONDS = 2
 HYPOTENSION_MAP_THRESHOLD = 65.0
-HYPOTENSION_CONFIRMATION_SECONDS = 300
-HYPOTENSION_MAX_SAMPLE_GAP_SECONDS = 90
-HYPOTENSION_RECOVERY_SECONDS = 30
+HYPOTENSION_CONFIRMATION_SECONDS = 30
+HYPOTENSION_MAX_SAMPLE_GAP_SECONDS = 3
+HYPOTENSION_RECOVERY_WINDOW_SECONDS = 10
+HYPOTENSION_RECOVERY_OBSERVATIONS = 5
+MAP_BUCKET_SECONDS = 1
+MAP_BUCKET_MAX_SAMPLES = 256
 
 
 @dataclass(frozen=True)
@@ -35,12 +38,13 @@ class RuntimeConfig:
 
 @dataclass(frozen=True)
 class WindowAlertConfig:
-    window_15m_seconds: int = 900
+    window_5m_seconds: int = 300
     window_slide_seconds: int = 60
     map_threshold: float = HYPOTENSION_MAP_THRESHOLD
     map_sustained_seconds: int = HYPOTENSION_CONFIRMATION_SECONDS
     map_max_sample_gap_seconds: int = HYPOTENSION_MAX_SAMPLE_GAP_SECONDS
-    map_recovery_seconds: int = HYPOTENSION_RECOVERY_SECONDS
+    map_recovery_window_seconds: int = HYPOTENSION_RECOVERY_WINDOW_SECONDS
+    map_recovery_observations: int = HYPOTENSION_RECOVERY_OBSERVATIONS
 
     @classmethod
     def from_env(cls):
@@ -49,13 +53,14 @@ class WindowAlertConfig:
         return config
 
     def validate(self):
-        if self.window_15m_seconds != 900 or self.window_slide_seconds != 60:
-            raise ValueError("V2 uses only 15-minute windows sliding every minute")
+        if self.window_5m_seconds != 300 or self.window_slide_seconds != 60:
+            raise ValueError("Business windows are five minutes sliding every minute")
         if (self.map_threshold != HYPOTENSION_MAP_THRESHOLD
                 or self.map_sustained_seconds != HYPOTENSION_CONFIRMATION_SECONDS):
             raise ValueError(f"MAP rule requires <{HYPOTENSION_MAP_THRESHOLD:g} with "
                              f">={HYPOTENSION_CONFIRMATION_SECONDS} seconds low evidence")
         if self.map_max_sample_gap_seconds <= 0:
             raise ValueError("Sample continuity gap must be positive")
-        if self.map_recovery_seconds != HYPOTENSION_RECOVERY_SECONDS:
-            raise ValueError(f"Recovery confirmation requires {HYPOTENSION_RECOVERY_SECONDS} event-time seconds")
+        if (self.map_recovery_window_seconds != HYPOTENSION_RECOVERY_WINDOW_SECONDS
+                or self.map_recovery_observations != HYPOTENSION_RECOVERY_OBSERVATIONS):
+            raise ValueError("Recovery requires five distinct one-second buckets within ten seconds")

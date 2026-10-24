@@ -1,5 +1,4 @@
--- All physical unique keys include their range partition column.
-SELECT create_hypertable('chartevents', by_range('event_time'), if_not_exists => TRUE, create_default_indexes => FALSE);
-SELECT create_hypertable('labevents', by_range('event_time'), if_not_exists => TRUE, create_default_indexes => FALSE);
-SELECT create_hypertable('vitals_15m', by_range('window_end'), if_not_exists => TRUE, create_default_indexes => FALSE);
-SELECT create_hypertable('alerts', by_range('trigger_time'), if_not_exists => TRUE, create_default_indexes => FALSE);
+SELECT create_hypertable('patient_telemetry_stream', by_range('sample_time', INTERVAL '1 hour'), if_not_exists => TRUE, create_default_indexes => FALSE);
+SELECT create_hypertable('vitals_sliding_window_5m', by_range('window_end', INTERVAL '1 day'), if_not_exists => TRUE, create_default_indexes => FALSE);
+SELECT create_hypertable('sepsis_alert_events', by_range('alert_time', INTERVAL '1 day'), if_not_exists => TRUE, create_default_indexes => FALSE);
+SELECT create_hypertable('waveform_segments', by_range('segment_start', INTERVAL '1 day'), if_not_exists => TRUE, create_default_indexes => FALSE);

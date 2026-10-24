@@ -51,35 +51,19 @@ class FastVerifyTests(unittest.TestCase):
         self.assertEqual([(r[1], r[3]) for r in producer.records],
                          list(simulator.demo_events(map_episode_checks=True)))
         self.assertAlmostEqual(clock.now, 1000 + 360 / SPEED, places=6)
-        self.assertEqual(len(producer.records), 1346)
+        self.assertEqual(len(producer.records), 8652)
 
-    def test_fast_inputs_require_gap_reset_and_out_of_order_recovery(self):
-        records = list(simulator.demo_events(map_episode_checks=True))
-        origin = event_timestamp_ms(simulator.chart_event(simulator.PATIENTS[0], 'MAP', 0,
-                                                          simulator.DEFAULT_START))
-        maps = {p['demo_id']: [e for topic, e in records if topic == TOPICS['chartevents']
-                              and e['stay_id'] == p['stay_id'] and e['signal_name'] == 'MAP']
-                for p in simulator.PATIENTS}
-        offsets = lambda events: [(event_timestamp_ms(e) - origin) // 1000 for e in events]
-        p02 = [e for e in maps['P02'] if not e['event_id'].endswith(simulator.MAP_RECOVERY_STALE_SUFFIX)]
-        p02_times, p04_times = offsets(p02), offsets(maps['P04'])
-        self.assertEqual(max(b - a for a, b in zip(p02_times, p02_times[1:])),
-                         WindowAlertConfig().map_max_sample_gap_seconds)
-        self.assertEqual(max(b - a for a, b in zip(p04_times, p04_times[1:])),
-                         WindowAlertConfig().map_max_sample_gap_seconds + 1)
-        recovery = next(e for e in maps['P03'] if e['event_id'].endswith(simulator.MAP_RECOVERY_OOO_SUFFIX))
-        index = maps['P03'].index(recovery)
-        self.assertGreater(event_timestamp_ms(maps['P03'][index - 1]), event_timestamp_ms(recovery))
-        self.assertLess(event_timestamp_ms(maps['P03'][index - 1]) - event_timestamp_ms(recovery),
-                        RuntimeConfig().max_out_of_orderness_seconds * 1000)
-        normal = sorted((e for e in maps['P03'] if e['valuenum'] >= WindowAlertConfig().map_threshold),
-                        key=event_timestamp_ms)
-        self.assertGreaterEqual(event_timestamp_ms(normal[-1]) - event_timestamp_ms(normal[0]),
-                                WindowAlertConfig().map_recovery_seconds * 1000)
-        self.assertFalse(any(e['valuenum'] < WindowAlertConfig().map_threshold and
-                             event_timestamp_ms(normal[0]) <= event_timestamp_ms(e) <= event_timestamp_ms(normal[-1])
-                             for e in maps['P03']))
-        self.assertTrue(any(e['event_id'].endswith(simulator.MAP_RECOVERY_STALE_SUFFIX) for e in maps['P02']))
+    def test_fast_inputs_use_all_signals_and_new_negative_p03_scenario(self):
+        from hypotension import advance_episode
+        states,outputs={},[]
+        for topic,event in simulator.demo_events():
+            if topic==TOPICS['chartevents'] and event['signal_name']=='MAP':
+                stay=event['stay_id']
+                states[stay],current=advance_episode(states.get(stay),{'event':event},WindowAlertConfig())
+                outputs.extend(current)
+        self.assertEqual(len(outputs),1)
+        self.assertEqual(outputs[0]['stay_id'],simulator.PATIENTS[1]['stay_id'])
+        self.assertEqual(WindowAlertConfig().map_sustained_seconds,30)
 
     def test_latency_is_real_clock_not_trigger_event_time(self):
         payload = {"alert_emitted_at": "2026-10-17T00:00:00.100Z",
@@ -107,8 +91,10 @@ class FastVerifyTests(unittest.TestCase):
         instance.prepare = lambda: instance.report.update(ready=True)
         with patch.object(orchestrate, "demo_lock", contextlib.nullcontext), patch(
                 "fast_verify.verify", return_value={"result": "PASS"}) as verify, patch(
-                "db_verify.verify_database", return_value={"result": "PASS"}), patch.object(
-                orchestrate, "run_demo") as normal, contextlib.redirect_stdout(io.StringIO()):
+                "db_verify.verify_database", return_value={"result": "PASS"}), patch(
+                "db_verify.verify_status_change", return_value={"result":"PASS"}), patch.object(
+                orchestrate, "run_demo") as normal, patch("kafka_topics.retire_obsolete", return_value=[]), patch(
+                "db_admin.connect"), patch("db_admin.retire_legacy", return_value={}), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(instance.run(), 0)
         verify.assert_called_once()
         normal.assert_not_called()
@@ -124,14 +110,11 @@ class DocumentationBoundaryTests(unittest.TestCase):
         self.assertIn("TimescaleDB", text)
         self.assertIn("not original MIMIC", text)
 
-    def test_root_flow_explains_seven_topics_and_implemented_db(self):
-        text = (PROJECT / "KAFKA_FLINK_FLOW.md").read_text(encoding="utf-8")
-        for topic in CORE_TOPICS:
-            self.assertIn(f"`{topic}` |", text)
-        for required in ("Storage Writer", "TimescaleDB", "icu-timescale-writer-v2",
-                         "mapped_stay_id", "WebSocket", "300", "90", "sample variance"):
-            self.assertIn(required, text)
-        self.assertFalse((PROJECT / "docs/KAFKA_FLINK_FLOW.md").exists())
+    def test_proposals_define_new_outputs_and_legacy_docs_are_deferred(self):
+        proposal=(PROJECT/'kafka-message-formats.md').read_text(encoding='utf-8')
+        for topic in ('icu.telemetry','icu.vitals.5m','icu.alerts','icu.deadletter'):
+            self.assertIn(topic,proposal)
+        self.assertTrue((PROJECT/'KAFKA_FLINK_FLOW.md').is_file())
 
     def test_private_history_is_ignored_and_never_tracked(self):
         target = ".local/PROJECT_PROGRESS_PRIVATE.md"

@@ -1,6 +1,7 @@
 """Idempotent schema/seed initialization and scoped runtime data reset."""
 import json
 import os
+import subprocess
 from pathlib import Path
 import sys
 from datetime import date, datetime
@@ -10,7 +11,7 @@ from psycopg import sql
 
 PROJECT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT / "services/storage_writer"))
-from config import CORE_TABLES, REFERENCE_TABLES, RUNTIME_TABLES, TIME_COLUMNS, db_params
+from config import CORE_TABLES, REFERENCE_TABLES, SOURCE_TABLES, RUNTIME_TABLES, TIME_COLUMNS, db_params
 
 SQL_ROOT = PROJECT / "docker/timescaledb/init"
 SEED = PROJECT / "config/db_reference_seed.json"
@@ -93,20 +94,21 @@ def seed_references(connection):
     return {table: len(seed[table]) for table in REFERENCE_TABLES}
 
 
-def verify_structure(connection):
+def verify_structure(connection, allow_legacy=False):
     extension = connection.execute("SELECT extversion FROM pg_extension WHERE extname = 'timescaledb'").fetchone()
     if not extension:
         raise RuntimeError("TimescaleDB extension is not installed")
     tables = {row[0] for row in connection.execute(
         "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")}
-    if tables != set(CORE_TABLES):
-        raise RuntimeError(f"Expected exactly nine public core tables; found {sorted(tables)}")
+    legacy = tables & {"vitals_15m", "alerts"}
+    if tables - (legacy if allow_legacy else set()) != set(CORE_TABLES):
+        raise RuntimeError(f"Expected eleven core tables; found {sorted(tables)}")
     hypertables = {row[0] for row in connection.execute(
         "SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema = 'public'")}
-    if hypertables != set(RUNTIME_TABLES):
+    if hypertables - (legacy if allow_legacy else set()) != set(RUNTIME_TABLES):
         raise RuntimeError(f"Expected four business hypertables; found {sorted(hypertables)}")
     return {"extension_version": extension[0], "tables": sorted(tables),
-            "hypertables": sorted(hypertables)}
+            "hypertables": sorted(hypertables), "legacy_tables": sorted(legacy)}
 
 
 def reference_counts(connection):
@@ -122,15 +124,70 @@ def runtime_counts(connection):
 def reset_runtime(connection, keep=False):
     if not keep:
         with connection.transaction():
-            connection.execute("TRUNCATE TABLE chartevents, labevents, vitals_15m, alerts")
+            connection.execute("TRUNCATE TABLE patient_telemetry_stream, vitals_sliding_window_5m, sepsis_alert_events, waveform_segments")
     return runtime_counts(connection)
 
 
-def initialize(keep=False):
-    with connect() as connection:
+def legacy_sources(connection):
+    return bool(connection.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='chartevents' AND column_name='event_time'").fetchone())
+
+
+def backup_database(docker):
+    """Full custom archive before changing an old schema; no DB mutation."""
+    from datetime import timezone
+    directory = PROJECT / ".local/db_backups"
+    directory.mkdir(parents=True, exist_ok=True)
+    target = directory / (datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "_before_contract.dump")
+    env = local_env()
+    with target.open("wb") as output:
+        subprocess.run([str(docker), "exec", "icu-timescaledb", "pg_dump", "-U", env["POSTGRES_USER"],
+                        "-d", env["POSTGRES_DB"], "-Fc"], stdout=output, stderr=subprocess.PIPE, check=True)
+    with target.open("rb") as stream:
+        subprocess.run([str(docker), "exec", "-i", "icu-timescaledb", "pg_restore", "--list"],
+                       stdin=stream, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    return str(target)
+
+
+def database_snapshot(connection):
+    tables = {row[0] for row in connection.execute(
+        "SELECT tablename FROM pg_tables WHERE schemaname='public'")}
+    owned = tables & (set(CORE_TABLES) | {"vitals_15m", "alerts"})
+    return {"rows": {table: connection.execute(sql.SQL("SELECT count(*) FROM {}").format(
+        sql.Identifier(table))).fetchone()[0] for table in sorted(owned)},
+            "hypertables": sorted(row[0] for row in connection.execute(
+                "SELECT hypertable_name FROM timescaledb_information.hypertables WHERE hypertable_schema='public'"))}
+
+
+def migrate_sources(connection, backup_path, quiesced=False):
+    if not legacy_sources(connection):
+        return False
+    if not quiesced or not backup_path or not Path(backup_path).is_file() or Path(backup_path).stat().st_size == 0:
+        raise RuntimeError("Breaking migration requires a verified backup and quiesced ICU consumers")
+    # Fixed owned source tables only, never CASCADE or reference tables.
+    with connection.transaction():
+        connection.execute("DROP TABLE chartevents, labevents")
+    return True
+
+
+def retire_legacy(connection, verified=False):
+    if not verified:
+        raise RuntimeError("Legacy tables may retire only after new consumers pass verification")
+    with connection.transaction():
+        connection.execute("DROP TABLE IF EXISTS vitals_15m, alerts")
+    return verify_structure(connection)
+
+
+def source_counts(connection):
+    return {table: connection.execute(sql.SQL("SELECT count(*) FROM {}").format(
+        sql.Identifier(table))).fetchone()[0] for table in SOURCE_TABLES}
+
+
+def initialize(keep=False, backup_path=None, quiesced=False):
+    with connect() as connection, connection.transaction():
+        migrated = migrate_sources(connection, backup_path, quiesced)
         apply_schema(connection)
         seed_references(connection)
-        structure = verify_structure(connection)
+        structure = verify_structure(connection, allow_legacy=True)
         refs = reference_counts(connection)
         if refs["patients"] != 4 or refs["admissions"] != 4 or refs["icustays"] != 4:
             raise RuntimeError(f"Reference count mismatch: {refs}")
@@ -138,5 +195,8 @@ def initialize(keep=False):
         after = reset_runtime(connection, keep=keep)
         if not keep and any(after.values()):
             raise RuntimeError("Runtime tables did not reset")
-        return {"structure": structure, "reference_counts": refs,
+        if any(source_counts(connection).values()):
+            raise RuntimeError("MIMIC source placeholders must remain empty")
+        return {"structure": structure, "reference_counts": refs, "migrated": migrated,
+                "backup_path": backup_path, "source_counts": source_counts(connection),
                 "runtime_before": before, "runtime_after": after, "kept_runtime_data": keep}

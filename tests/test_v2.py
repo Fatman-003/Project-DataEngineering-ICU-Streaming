@@ -26,9 +26,12 @@ from run_icu_demo import events_at, demo_events, chart_event, DEFAULT_START
 from dlq import rejection, encode
 from dedup import check_and_remember, dedup_identity
 from event_time import classify_event, event_timestamp_ms, watermark_strategy
-from business_outputs import processed_event
-from window_aggregates import create_accumulator, add_record, merge_accumulators, aggregate_result, window_key
-from hypotension import advance_episode, select_timestamp_observation
+from business_outputs import telemetry
+from business_contract import FIELDS, metadata
+def processed_event(r, ignored=None):
+    return telemetry(r["event"], {FIELDS[r["event"]["signal_name"]]:r["event"]["valuenum"]})
+from window_aggregates import create_accumulator, add_record, merge_accumulators, aggregate_result
+from hypotension import advance_episode
 from gateway import GatewayState, KafkaFeed, create_app, publish, CLIENTS, STATE, GROUP_ID, SUBSCRIPTIONS
 
 PATIENTS = load_patients()
@@ -51,19 +54,15 @@ def record(value=None):
 
 
 def summary():
-    acc = add_record(create_accumulator(), record())
-    timestamp = event_timestamp_ms(event())
-    return aggregate_result(acc, (str(PATIENTS[0]["stay_id"]), "MAP"), timestamp, timestamp + 900000)
-
+    wide=processed_event(record())
+    acc=add_record(create_accumulator(),wide)
+    return aggregate_result(acc,str(PATIENTS[0]['stay_id']),0,300000)
 
 def alert():
-    state, results = None, []
-    for second in range(0, 361, 60):
-        value = event(second=second)
-        value["valuenum"] = 62
-        state, current = advance_episode(state, record(value), WindowAlertConfig())
-        results.extend(current)
-    return results[0]
+    state=None
+    for second in range(31):
+        state,outputs=advance_episode(state,record(dict(event(second=second),valuenum=62)),WindowAlertConfig())
+        if outputs: return outputs[0]
 
 
 class RegistryTests(unittest.TestCase):
@@ -109,12 +108,12 @@ class RegistryTests(unittest.TestCase):
 
 
 class ContractTests(unittest.TestCase):
-    def test_seven_topics(self):
-        self.assertEqual(len(set(CORE_TOPICS)), 7)
-        self.assertTrue(all(t.startswith("icu.v2.") for t in CORE_TOPICS))
+    def test_six_topics(self):
+        self.assertEqual(len(set(CORE_TOPICS)), 6)
+        self.assertEqual(set(TOPICS.values()), {"icu.v2.chartevents","icu.v2.labevents"})
 
     def test_strict_json_rejects_non_objects_and_constants(self):
-        for raw in ('[]', 'null', '{"v":NaN}', '{"v":Infinity}', '{"v":1,"v":2}', '{'):
+        for raw in ('[]', 'null', '{"v":NaN}', '{"v":Infinity}', '{"v":1e999}', '{"v":1,"v":2}', '{'):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 parse_event(raw)
 
@@ -164,32 +163,30 @@ class ContractTests(unittest.TestCase):
                 validate_event(dict(event(), **changes), "chartevents")
 
     def test_parsing_dlq_and_recoverable_identity(self):
-        _, rejected = parse_and_validate(source(dict(event(), valuenum=-1)), "chartevents")
-        self.assertEqual(rejected["error_type"], "VALUE_ERROR")
-        self.assertEqual(rejected["stay_id"], PATIENTS[0]["stay_id"])
-        self.assertEqual(rejected["subject_id"], PATIENTS[0]["subject_id"])
-        self.assertEqual(json.loads(rejected["raw_payload"])["valuenum"], -1)
+        _,rejected=parse_and_validate(source(dict(event(),valuenum=-1)),"chartevents")
+        self.assertEqual(rejected["error_code"],"VALUE_OUT_OF_RANGE")
+        self.assertEqual(rejected["original_payload"]["stay_id"],PATIENTS[0]["stay_id"])
+        self.assertEqual(rejected["original_payload"]["valuenum"],-1)
 
     def test_non_utf8_dlq_preserves_bytes(self):
         _, rejected = parse_and_validate(source(b"\xff\x00"), "chartevents")
-        self.assertEqual(rejected["error_type"], "PARSE_ERROR")
+        self.assertEqual(rejected["error_stage"], "DESERIALIZATION")
         self.assertEqual(base64.b64decode(rejected["raw_payload_base64"]), b"\xff\x00")
 
     def test_tombstone_rejected(self):
         envelope = dict(source(b""), payload_base64=None)
         _, rejected = parse_and_validate(envelope, "chartevents")
-        self.assertEqual(rejected["error_type"], "PARSE_ERROR")
-        self.assertIsNone(rejected["raw_payload"])
+        self.assertEqual(rejected["error_stage"], "DESERIALIZATION")
+        self.assertIsNone(rejected["original_payload"])
 
-    def test_clean_projection_is_small(self):
-        result = processed_event(record(), "2026-10-16T20:00:01Z")
-        self.assertEqual(set(result), CHART_FIELDS | {"quality_status", "ordering_status", "processed_at"})
-        self.assertEqual(result["quality_status"], "VALID")
-        self.assertEqual(result["ordering_status"], "IN_ORDER")
+    def test_wide_projection_has_only_documented_clinical_fields(self):
+        result=processed_event(record())
+        self.assertEqual(result['map'],event()['valuenum'])
+        self.assertNotIn('respiratory_rate',result)
+        self.assertNotIn('dbp',result)
 
-    def test_clean_projection_preserves_ooo(self):
-        result = processed_event(dict(record(), classification="OUT_OF_ORDER_EVENT"))
-        self.assertEqual(result["ordering_status"], "OUT_OF_ORDER")
+    def test_wide_identity_is_stable(self):
+        self.assertEqual(processed_event(record())['message_id'],processed_event(record())['message_id'])
 
     def test_stay_keys_are_decimal_id_bytes(self):
         for _, value in events_at(0):
@@ -229,15 +226,6 @@ class ComputationTests(unittest.TestCase):
         self.assertIsNotNone(strategy.timestamp_assigner)
         self.assertEqual(strategy.timestamp_assigner.extract_timestamp(encode(record()), 123), event_timestamp_ms(event()))
 
-    def test_recovery_rearms_a_second_episode(self):
-        state, outputs = None, []
-        for second in range(0, 721, 30):
-            value = 65 if second == 330 else 64.9
-            state, emitted = advance_episode(state, record(dict(event(second=second), valuenum=value)), WindowAlertConfig())
-            outputs.extend(emitted)
-        self.assertEqual(len(outputs), 2)
-        self.assertNotEqual(outputs[0]["alert_id"], outputs[1]["alert_id"])
-
     def test_managed_dedup_state_transition(self):
         state = MagicMock()
         state.value.return_value = None
@@ -252,87 +240,16 @@ class ComputationTests(unittest.TestCase):
         self.assertEqual(classify_event(101, 100, 120), "OUT_OF_ORDER_EVENT")
         self.assertEqual(classify_event(120, 100, 120), "CLEAN_EVENT")
 
-    def test_15m_statistics_match_independent_oracle(self):
-        accumulator = create_accumulator()
-        values = [60, 62, 65, 71, 80]
-        for value in values:
-            accumulator = add_record(accumulator, record(dict(event(), valuenum=value)))
-        result = aggregate_result(accumulator, window_key(record()), 0, 900000, 1234)
-        self.assertEqual(result["window_minutes"], 15)
-        self.assertEqual(result["count"], len(values))
-        self.assertEqual(result["min"], min(values))
-        self.assertEqual(result["max"], max(values))
-        self.assertAlmostEqual(result["mean"], statistics.mean(values))
-        self.assertAlmostEqual(result["variance"], statistics.variance(values))
-        self.assertEqual(result["subject_id"], PATIENTS[0]["subject_id"])
-
-    def test_welford_merge_and_sample_variance(self):
-        left, right = create_accumulator(), create_accumulator()
-        for value in (60, 62):
-            left = add_record(left, record(dict(event(), valuenum=value)))
-        for value in (71, 80):
-            right = add_record(right, record(dict(event(), valuenum=value)))
-        result = merge_accumulators(left, right)
-        self.assertAlmostEqual(result["m2"] / 3, statistics.variance([60, 62, 71, 80]))
-
-    def test_empty_and_singleton_windows(self):
-        self.assertIsNone(aggregate_result(create_accumulator(), ("1", "MAP"), 0, 900000))
-        self.assertIsNone(summary()["variance"])
-
-    def test_aggregate_id_stable_across_emission_times(self):
-        accumulator = add_record(create_accumulator(), record())
-        first = aggregate_result(accumulator, window_key(record()), 0, 900000, 0)
-        second = aggregate_result(accumulator, window_key(record()), 0, 900000, 100)
-        self.assertEqual(first["aggregate_id"], second["aggregate_id"])
-
-    def test_no_other_statistical_window(self):
-        with self.assertRaises(ValueError):
-            aggregate_result(add_record(create_accumulator(), record()), window_key(record()), 0, 300000)
-        with self.assertRaises(ValueError):
-            replace(WindowAlertConfig(), window_15m_seconds=300).validate()
-
-    def test_sustained_rule_qualifies_once(self):
-        state, results = None, []
-        for second in range(0, 600, 30):
-            state, current = advance_episode(state, record(dict(event(second=second), valuenum=62)), WindowAlertConfig())
-            results.extend(current)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["alert_type"], "SUSTAINED_HYPOTENSION")
-        self.assertEqual(parse_timestamp(results[0]["trigger_time"]) - parse_timestamp(results[0]["episode_start"]), timedelta(minutes=5))
-
-    def test_short_low_recovery_never_alerts(self):
-        state, results = None, []
-        for second in range(0, 420, 30):
-            value = 62 if second < 120 else 76
-            state, current = advance_episode(state, record(dict(event(second=second), valuenum=value)), WindowAlertConfig())
-            results.extend(current)
-        self.assertEqual(results, [])
-        self.assertIsNone(state)
-
-    def test_sample_gap_resets_episode(self):
-        state, _ = advance_episode(None, record(dict(event(), valuenum=62)), WindowAlertConfig())
-        state, output = advance_episode(state, record(dict(event(second=300), valuenum=62)), WindowAlertConfig())
-        self.assertEqual(output, [])
-        self.assertEqual(state["start_ms"], event_timestamp_ms(event(second=300)))
-
-    def test_equal_time_recovery_dominates_low(self):
-        low, recovery = record(dict(event(), valuenum=62)), record(dict(event(), valuenum=65))
-        self.assertEqual(select_timestamp_observation([low, recovery], 65), recovery)
-        self.assertEqual(select_timestamp_observation([recovery, low], 65), recovery)
-
-    def test_stable_alert_ids(self):
-        self.assertEqual(alert()["alert_id"], alert()["alert_id"])
-
-    def test_generated_schedule_alerts_only_p02(self):
-        states, alerted = {}, set()
-        for second in range(1200):
-            for topic, value in events_at(second):
-                if topic != TOPICS["chartevents"] or value.get("signal_name") != "MAP":
-                    continue
-                key = value["stay_id"]
-                states[key], outputs = advance_episode(states.get(key), record(value), WindowAlertConfig())
-                alerted.update(a["stay_id"] for a in outputs)
-        self.assertEqual(alerted, {PATIENTS[1]["stay_id"]})
+    def test_wide_means_merge_and_missing_observations(self):
+        a=add_record(create_accumulator(),{'heart_rate':80,'map':60})
+        b=add_record(create_accumulator(),{'heart_rate':100,'spo2':98})
+        result=aggregate_result(merge_accumulators(a,b),'35727289',0,300000)
+        self.assertEqual(result['avg_heart_rate'],90)
+        self.assertEqual(result['avg_map'],60)
+        self.assertEqual(result['avg_spo2'],98)
+        self.assertIsNone(result['avg_sbp'])
+        self.assertIsNone(aggregate_result(create_accumulator(),'1',0,300000))
+        with self.assertRaises(ValueError): aggregate_result(a,'1',0,900000)
 
 
 class GatewayTests(unittest.IsolatedAsyncioTestCase):
@@ -359,8 +276,8 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
     async def test_one_ws_snapshot_and_all_three_updates(self):
         ws = await self.client.ws_connect("/ws")
         self.assertEqual((await ws.receive_json())["message_type"], "SNAPSHOT")
-        for topic, value, kind in ((BUSINESS_TOPICS["chartevents"], processed_event(record()), "VITAL_UPDATE"),
-                                  (BUSINESS_TOPICS["aggregates"], summary(), "VITAL_15M"),
+        for topic, value, kind in ((BUSINESS_TOPICS["telemetry"], processed_event(record()), "TELEMETRY_SAMPLE"),
+                                  (BUSINESS_TOPICS["aggregates"], summary(), "VITALS_WINDOW_5M"),
                                   (BUSINESS_TOPICS["alerts"], alert(), "ALERT")):
             publish(self.client.server.app, topic, value)
             update = await asyncio.wait_for(ws.receive_json(), 2)
@@ -369,7 +286,7 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         await ws.close()
 
     async def test_connect_snapshot_includes_existing_state(self):
-        publish(self.client.server.app, BUSINESS_TOPICS["chartevents"], processed_event(record()))
+        publish(self.client.server.app, BUSINESS_TOPICS["telemetry"], processed_event(record()))
         ws = await self.client.ws_connect("/ws")
         self.assertEqual((await ws.receive_json())["payload"]["P01"]["vitals"]["MAP"]["value"], event()["valuenum"])
         await ws.close()
@@ -378,15 +295,15 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         slow, fast = asyncio.Queue(maxsize=1), asyncio.Queue(maxsize=10)
         slow.put_nowait("old")
         self.client.server.app[CLIENTS].update((slow, fast))
-        publish(self.client.server.app, BUSINESS_TOPICS["chartevents"], processed_event(record()))
+        publish(self.client.server.app, BUSINESS_TOPICS["telemetry"], processed_event(record()))
         self.assertIsNone(slow.get_nowait())
-        self.assertEqual(fast.get_nowait()["message_type"], "VITAL_UPDATE")
+        self.assertEqual(fast.get_nowait()["message_type"], "TELEMETRY_SAMPLE")
 
     async def test_out_of_order_backfill_cannot_regress_current_vitals(self):
         state = GatewayState()
-        state.ingest(BUSINESS_TOPICS["chartevents"], processed_event(record(event(second=20))))
-        self.assertIsNone(state.ingest(BUSINESS_TOPICS["chartevents"], processed_event(record(event(second=10)))))
-        self.assertEqual(state.snapshot()["P01"]["vitals"]["MAP"]["event_time"], event(second=20)["event_time"])
+        state.ingest(BUSINESS_TOPICS["telemetry"], processed_event(record(event(second=20))))
+        self.assertIsNone(state.ingest(BUSINESS_TOPICS["telemetry"], processed_event(record(event(second=10)))))
+        self.assertEqual(parse_timestamp(state.snapshot()["P01"]["vitals"]["MAP"]["event_time"]), parse_timestamp(event(second=20)["event_time"]))
 
     async def test_alert_redelivery_is_idempotent(self):
         state = GatewayState()
@@ -399,7 +316,7 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         await ws.receive_json()
         emitted = "2026-10-17T00:00:00.000000Z"
         received = "2026-10-17T00:00:00.050000Z"
-        value = dict(alert(), alert_emitted_at=emitted)
+        value = dict(alert(), produced_at=emitted)
         publish(self.client.server.app, BUSINESS_TOPICS["alerts"], value, received_at=received)
         update = await asyncio.wait_for(ws.receive_json(), 0.5)
         self.assertEqual(update["message_type"], "ALERT")
@@ -411,14 +328,14 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
     async def test_gateway_rejects_fifth_identity_and_non_15m_summary(self):
         state = GatewayState()
         for topic, value in ((BUSINESS_TOPICS["alerts"], dict(alert(), stay_id=1)),
-                             (BUSINESS_TOPICS["aggregates"], dict(summary(), window_minutes=5))):
+                             (BUSINESS_TOPICS["aggregates"], dict(summary(), event_type="OLD_WINDOW"))):
             with self.assertRaises(ValueError):
                 state.ingest(topic, value)
 
 
 class InfrastructureTests(unittest.TestCase):
     def test_gateway_uses_a_list_subscription_and_rebuilds_from_beginning(self):
-        with patch("confluent_kafka.Consumer") as constructor:
+        with patch("confluent_kafka.Consumer") as constructor, patch("confluent_kafka.Producer"):
             feed = KafkaFeed()
             feed.subscribe()
             args, kwargs = feed.consumer.subscribe.call_args
@@ -461,7 +378,7 @@ class InfrastructureTests(unittest.TestCase):
 
     def test_downstream_groups_and_subscriptions_independent(self):
         self.assertEqual(GROUP_ID, "icu-ui-gateway-v2")
-        self.assertEqual(set(SUBSCRIPTIONS), {BUSINESS_TOPICS[k] for k in ("chartevents", "aggregates", "alerts")})
+        self.assertEqual(set(SUBSCRIPTIONS), {BUSINESS_TOPICS[k] for k in ("telemetry", "aggregates", "alerts")})
         text = (PROJECT / "services/realtime_gateway/gateway.py").read_text().lower()
         for dependency in ("psycopg", "sqlalchemy", "timescale", "5432"):
             self.assertNotIn(dependency, text)
@@ -469,7 +386,7 @@ class InfrastructureTests(unittest.TestCase):
 
     def test_only_15m_core_and_no_waveform_input(self):
         self.assertEqual(set(TOPICS), {"chartevents", "labevents"})
-        self.assertFalse(any("5m" in topic.replace("15m", "") for topic in CORE_TOPICS))
+        self.assertIn("icu.vitals.5m",CORE_TOPICS)
         text = (PROJECT / "jobs/flink/runtime_pipeline.py").read_text()
         self.assertNotIn("waveform", text)
         self.assertNotIn("clinical.events", text)

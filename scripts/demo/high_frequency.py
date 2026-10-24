@@ -44,8 +44,8 @@ def tick_events(tick, frequency, start=DEFAULT_START):
     for patient in PATIENTS:
         for signal in SIGNALS:
             yield "numeric", TOPICS["chartevents"], chart_event(patient, signal, second, start)
-    # Reuse the normal scenario's sparse scheduler. Discard its four rotating
-    # observations; the repeated ID is the deliberate P04 duplicate probe.
+    # Reuse the normal scenario's sparse scheduler, discarding its scalar tick.
+    # The repeated ID is the deliberate P04 duplicate probe.
     seen = set()
     for topic, event in events_at(second, start, previous_second=(tick - 1) / frequency, tick=tick):
         if topic == TOPICS["labevents"]:

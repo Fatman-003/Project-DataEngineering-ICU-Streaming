@@ -126,19 +126,18 @@ class GenerationTests(unittest.TestCase):
         self.assertIs(iter(stream), stream)
         self.assertEqual(next(stream)[1]["signal_name"], "HR")
 
-    def test_required_evidence_is_300_event_seconds_at_every_frequency(self):
-        for frequency in (1 / 6, 100, 200):
-            state, outputs = None, []
-            for tick in range(round(300 * frequency) + 1):
-                event = normal.chart_event(normal.PATIENTS[1], "MAP", tick / frequency, normal.DEFAULT_START)
-                event["valuenum"] = 62
-                state, emitted = advance_episode(state, {"event": event}, WindowAlertConfig())
-                if tick < 300 * frequency:
-                    self.assertEqual(emitted, [])
-                outputs.extend(emitted)
-            self.assertEqual(len(outputs), 1)
-            self.assertEqual(event_timestamp_ms({"event_time": outputs[0]["trigger_time"]}) -
-                             event_timestamp_ms({"event_time": outputs[0]["episode_start"]}), 300000)
+    def test_required_evidence_is_30_event_seconds_after_bucket_normalization(self):
+        from test_map_operator import ManagedOperatorFixture, record
+        for frequency in (1,100,200):
+            fixture = ManagedOperatorFixture()
+            outputs=[]
+            for tick in range(31*frequency):
+                fixture.deliver(record(tick/frequency,62))
+                outputs.extend(fixture.advance_watermark(tick/frequency-2))
+            outputs.extend(fixture.advance_watermark(32))
+            self.assertEqual(len(outputs),1)
+            self.assertEqual(event_timestamp_ms({"event_time":outputs[0]["alert_time"]}) -
+                             event_timestamp_ms(record(0)["event"]),30000)
 
 
 class ProducerTests(unittest.TestCase):

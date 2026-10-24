@@ -19,12 +19,6 @@ SCENARIO_SECONDS = 360
 DEFAULT_DURATION_MINUTES = 6
 DEFAULT_INTERVAL_SECONDS = 1
 EDGE_SECONDS = {"ooo": 45, "duplicate": 120, "invalid": 210, "late": 300}
-# FastVerify inputs, not alternate alert logic. P02 proves the inclusive gap
-# boundary; P04 would falsely alert without resetting at the 91-second gap.
-MAP_CHECK_SAMPLES = {"P02": (13, 103, 193, 283, 313, 343),
-                     "P04": (0, 60, 151, 211, 271, 331)}
-MAP_RECOVERY_OOO_SUFFIX = "-map-recovery-ooo"
-MAP_RECOVERY_STALE_SUFFIX = "-map-recovery-stale"
 
 
 def chart_event(patient, signal, second, start, suffix=""):
@@ -37,7 +31,7 @@ def chart_event(patient, signal, second, start, suffix=""):
               "SBP": 116 + drift % 5, "DBP": 70 + drift % 3,
               "SpO2": 97 + drift % 2, "RR": 16 + drift % 4}
     if signal == "MAP" and ((patient_number == 2 and 12 <= phase < SCENARIO_SECONDS)
-                            or (patient_number == 3 and (phase < 120 or phase >= 180))):
+                            or (patient_number == 3 and (phase % 60 < 15 or 18 <= phase % 60 < 29))):
         values[signal] = 61 + drift % 3
     event_time = (start + timedelta(seconds=second)).isoformat().replace("+00:00", "Z")
     return {"schema_version": "2.0", "event_id": f"evt-{patient['stay_id']}-{event_time}-{signal}{suffix}",
@@ -54,19 +48,12 @@ def crossed(second, previous_second, period, offset):
 def events_at(second, start=DEFAULT_START, *, previous_second=None, tick=None,
               map_episode_checks=False):
     previous_second = second - 1 if previous_second is None else previous_second
-    tick = int(second) if tick is None else tick
     for patient in PATIENTS:
-        # Four readable updates per clock second; each patient's six signals rotate.
-        for signal in (tuple(SIGNALS)[tick % len(SIGNALS)],):
-            if map_episode_checks and signal == "MAP" and patient["demo_id"] in MAP_CHECK_SAMPLES:
-                continue  # Emit this patient's explicit MAP boundary scenario below.
+        for signal in SIGNALS:
             event = chart_event(patient, signal, second, start)
-            if map_episode_checks and patient["demo_id"] == "P03" and signal == "MAP":
-                event["valuenum"] = 71 if 120 <= second < 162 else 62
-                # The OOO recovery at 120s plus normal MAP through 157s confirms
-                # recovery; the later low segment is independently too short.
             yield TOPICS["chartevents"], event
-            if patient["demo_id"] == "P04" and crossed(second, previous_second, SCENARIO_SECONDS, EDGE_SECONDS["duplicate"]):
+            if (patient["demo_id"] == "P04" and signal == "HR"
+                    and crossed(second, previous_second, SCENARIO_SECONDS, EDGE_SECONDS["duplicate"])):
                 yield TOPICS["chartevents"], dict(event)
         if crossed(second, previous_second, 240, 0):
             event = chart_event(patient, "MAP", second, start)
@@ -76,33 +63,19 @@ def events_at(second, start=DEFAULT_START, *, previous_second=None, tick=None,
                          valueuom="mmol/L")
             del event["signal_name"]
             yield TOPICS["labevents"], event
-    if map_episode_checks:
-        for patient in PATIENTS:
-            if second in MAP_CHECK_SAMPLES.get(patient["demo_id"], ()):
-                event = chart_event(patient, "MAP", second, start)
-                event["valuenum"] = 62
-                yield TOPICS["chartevents"], event
-        if second == 130:
-            recovery = chart_event(PATIENTS[2], "MAP", 120, start, MAP_RECOVERY_OOO_SUFFIX)
-            recovery["valuenum"] = 71
-            yield TOPICS["chartevents"], recovery
-        if second == 340:
-            recovery = chart_event(PATIENTS[1], "MAP", 200, start, MAP_RECOVERY_STALE_SUFFIX)
-            recovery["valuenum"] = 71
-            yield TOPICS["chartevents"], recovery
     patient = PATIENTS[3]
     if crossed(second, previous_second, SCENARIO_SECONDS, EDGE_SECONDS["invalid"]):
         event = chart_event(patient, "SpO2", second, start, "-invalid")
         event["valuenum"] = -5
         yield TOPICS["chartevents"], event
     if crossed(second, previous_second, SCENARIO_SECONDS, EDGE_SECONDS["ooo"]):
-        yield TOPICS["chartevents"], chart_event(patient, "HR", second - 10, start, "-ooo")
+        yield TOPICS["chartevents"], chart_event(patient, "HR", second - 1, start, "-ooo")
     if crossed(second, previous_second, SCENARIO_SECONDS, EDGE_SECONDS["late"]):
         yield TOPICS["chartevents"], chart_event(patient, "HR", second - 170, start, "-late")
 
 
 def demo_events(duration_minutes=DEFAULT_DURATION_MINUTES, start=DEFAULT_START, *, map_episode_checks=False):
-    for second in range(math.ceil(duration_minutes * 60)):
+    for second in range(math.ceil(round(duration_minutes * 60, 6))):
         yield from events_at(second, start, map_episode_checks=map_episode_checks)
 
 
@@ -154,7 +127,7 @@ def run_demo(speed=1, duration_minutes=DEFAULT_DURATION_MINUTES, loop=False, raw
         if error:
             failures.append(str(error))
 
-    tick, total = 0, duration_minutes * 60
+    tick, total = 0, round(duration_minutes * 60, 6)
     began = time.monotonic()
     previous_second = -interval_seconds
     published, interrupted = 0, False

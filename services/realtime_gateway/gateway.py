@@ -16,10 +16,11 @@ sys.path.insert(0, str(PROJECT / "jobs/flink"))
 from registry import load_patients, IDENTITY_FIELDS
 from contracts import BUSINESS_TOPICS, CHART_FIELDS, parse_event
 from validation import validate_event, parse_timestamp
-from runtime_config import HYPOTENSION_MAP_THRESHOLD, HYPOTENSION_CONFIRMATION_SECONDS
+from business_contract import (validate, ContractError, headers, deadletter, source_record,
+                               FIELDS, encode, DLQ_TOPIC)
 
 GROUP_ID = "icu-ui-gateway-v2"
-SUBSCRIPTIONS = tuple(BUSINESS_TOPICS[key] for key in ("chartevents", "aggregates", "alerts"))
+SUBSCRIPTIONS = tuple(BUSINESS_TOPICS[key] for key in ("telemetry", "aggregates", "alerts"))
 LOG = logging.getLogger(__name__)
 
 
@@ -37,65 +38,55 @@ class GatewayState:
         return json.loads(json.dumps(self.patients))
 
     def ingest(self, topic, event, received_at=None):
-        if topic not in SUBSCRIPTIONS or event.get("schema_version") != "2.0":
-            raise ValueError("Unsupported gateway topic/schema")
-        patient = next((p for p in self.patients.values()
-                        if all(event.get(field) == p[field] for field in IDENTITY_FIELDS)), None)
+        validate(event, topic)
+        patient = next((p for p in self.patients.values() if event["stay_id"] == p["stay_id"]), None)
         if patient is None:
-            raise ValueError("Gateway identity must match P01-P04")
+            raise ContractError("REFERENCE_NOT_FOUND", "Unknown fixed stay")
         common = {field: patient[field] for field in ("demo_id", "bed_id", "stay_id")}
-        if topic == BUSINESS_TOPICS["chartevents"]:
-            validate_event({key: event[key] for key in CHART_FIELDS}, "chartevents")
-            if event.get("quality_status") != "VALID":
-                raise ValueError("Only clean vitals can reach the UI")
-            signal, clock, target = event["signal_name"], "event_time", patient["vitals"]
-            payload = dict(common, signal=signal, value=event["valuenum"], unit=event["valueuom"],
-                           event_time=event[clock])
-            message_type = "VITAL_UPDATE"
-        elif topic == BUSINESS_TOPICS["aggregates"]:
-            if event.get("window_minutes") != 15:
-                raise ValueError("Only 15-minute summaries can reach the UI")
-            for field in ("mean", "min", "max"):
-                if type(event.get(field)) not in (int, float) or not math.isfinite(event[field]):
-                    raise ValueError("Summary values must be finite")
-            signal, clock, target = event["signal_name"], "window_end", patient["summaries"]
-            payload = dict(common, signal=signal, **{key: event[key] for key in ("mean", "min", "max", clock)})
-            message_type = "VITAL_15M"
-        else:
-            parse_timestamp(event["trigger_time"])
-            alert_id = event["alert_id"]
-            if event.get("alert_type") != "SUSTAINED_HYPOTENSION" or event.get("signal_name") != "MAP":
-                raise ValueError("Unsupported alert")
-            if alert_id in self.recent_alert_ids:
+        payload = dict(event, **{k: v for k, v in common.items() if k not in event})
+        if topic == BUSINESS_TOPICS["telemetry"]:
+            clock, target = "sample_time", patient["vitals"]
+            previous = target.get("HR")
+            if previous and parse_timestamp(previous["event_time"]) >= parse_timestamp(event[clock]):
                 return None
-            self.recent_alert_ids[alert_id] = True
-            if len(self.recent_alert_ids) > 4096:
-                self.recent_alert_ids.popitem(last=False)
-            payload = dict(common, severity=event["severity"],
-                           message=(f"MAP < {HYPOTENSION_MAP_THRESHOLD:g} sustained for "
-                                    f"{HYPOTENSION_CONFIRMATION_SECONDS / 60:g} minutes"),
-                           trigger_time=event["trigger_time"],
-                           alert_id=alert_id, status=event["status"])
-            if "alert_emitted_at" in event:
-                parse_timestamp(event["alert_emitted_at"])
-                payload.update(alert_emitted_at=event["alert_emitted_at"],
-                               gateway_received_at=received_at or utc_now())
-            patient["alerts"].append(payload)
-            patient["alerts"] = sorted(patient["alerts"], key=lambda a: parse_timestamp(a["trigger_time"]))[-100:]
-            return {"message_type": "ALERT", "payload": payload}
-        timestamp = parse_timestamp(payload[clock])
-        previous = target.get(signal)
-        if previous and parse_timestamp(previous[clock]) >= timestamp:
-            return None
-        target[signal] = payload
+            for signal, field in FIELDS.items():
+                target[signal] = dict(common, value=event.get(field), event_time=event[clock])
+            message_type = "TELEMETRY_SAMPLE"
+        elif topic == BUSINESS_TOPICS["aggregates"]:
+            clock, target = "window_end", patient["summaries"]
+            previous = target.get("HR")
+            if previous and parse_timestamp(previous[clock]) >= parse_timestamp(event[clock]):
+                return None
+            for signal, field in FIELDS.items():
+                target[signal] = dict(common, mean=event.get("avg_" + field), window_end=event[clock])
+            message_type = "VITALS_WINDOW_5M"
+        else:
+            existing = next((a for a in patient["alerts"] if a["alert_id"] == event["alert_id"]
+                             and parse_timestamp(a["alert_time"]) == parse_timestamp(event["alert_time"])), None)
+            if event["event_type"] == "SEPSIS_ALERT_STATUS_CHANGED":
+                if existing is None:
+                    raise ContractError("ALERT_NOT_FOUND", "Status refers to unknown alert")
+                if existing["status"] == event["status"]:
+                    return None
+                existing["status"] = event["status"]
+                message_type = "ALERT_STATUS_CHANGED"
+            else:
+                if existing is not None:
+                    return None
+                payload.update(alert_emitted_at=event["produced_at"], gateway_received_at=received_at or utc_now())
+                patient["alerts"].append(payload)
+                patient["alerts"] = sorted(patient["alerts"], key=lambda a: parse_timestamp(a["alert_time"]))[-100:]
+                message_type = "ALERT"
         return {"message_type": message_type, "payload": payload}
 
 
 class KafkaFeed:
     def __init__(self):
-        from confluent_kafka import Consumer
+        from confluent_kafka import Consumer, Producer
         self.connected = False
         self.received_at = None
+        self.producer = Producer({"bootstrap.servers": os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
+                                  "acks": "all", "enable.idempotence": True})
         self.consumer = Consumer({"bootstrap.servers": os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"),
                                   "group.id": GROUP_ID, "enable.auto.commit": False,
                                   "auto.offset.reset": "earliest", "fetch.wait.max.ms": 50})
@@ -121,6 +112,17 @@ class KafkaFeed:
         if message is not None:
             self.connected = True
         return message
+
+    def reject(self, message, code, stage):
+        envelope = deadletter(source_record(message), code, "Rejected gateway business message", stage, GROUP_ID)
+        failures = []
+        def delivered(error, record):
+            if error:
+                failures.append(str(error))
+        self.producer.produce(DLQ_TOPIC, key=message.key() or envelope["dlq_id"].encode(),
+                              value=encode(envelope).encode(), headers=headers(envelope), on_delivery=delivered)
+        if self.producer.flush(20) or failures:
+            raise RuntimeError("Gateway DLQ delivery failed")
 
     def close(self):
         self.consumer.close()
@@ -151,11 +153,14 @@ async def consume(app):
             message = await loop.run_in_executor(executor, feed.poll)
             if message is not None:
                 try:
-                    publish(app, message.topic(), parse_event(message.value().decode("utf-8")),
-                            getattr(feed, "received_at", None))
-                except (ValueError, KeyError, TypeError, UnicodeError):
+                    event = parse_event(message.value().decode("utf-8"))
+                    validate(event, message.topic(), message.key(), message.headers(), require_headers=True)
+                    publish(app, message.topic(), event, getattr(feed, "received_at", None))
+                except (ValueError, KeyError, TypeError, UnicodeError, RecursionError) as error:
                     app[REJECTED] += 1
-                    LOG.exception("Discarding invalid business record")
+                    code = getattr(error, "code", "INVALID_UTF8" if isinstance(error, UnicodeError) else "JSON_PARSE_ERROR")
+                    stage = "PROCESSING" if code == "ALERT_NOT_FOUND" else "VALIDATION" if isinstance(error, ContractError) else "DESERIALIZATION"
+                    await loop.run_in_executor(executor, feed.reject, message, code, stage)
     finally:
         await loop.run_in_executor(executor, feed.close)
         executor.shutdown(wait=False)

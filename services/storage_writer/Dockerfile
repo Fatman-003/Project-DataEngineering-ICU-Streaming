@@ -3,6 +3,7 @@ WORKDIR /app
 COPY services/storage_writer/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY services/storage_writer/ /app/services/storage_writer/
+COPY jobs/flink/ /app/jobs/flink/
 COPY config/demo_patients.yaml /app/config/demo_patients.yaml
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 CMD ["python", "-u", "-B", "services/storage_writer/writer.py"]

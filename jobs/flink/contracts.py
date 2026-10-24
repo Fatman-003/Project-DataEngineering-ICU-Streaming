@@ -1,14 +1,8 @@
-"""Seven V2 topics and strict JSON parsing."""
+"""Two unchanged RAW inputs and four UI-facing outputs."""
 import json
+from business_contract import BUSINESS_TOPICS, DLQ_TOPIC, finite_json_float
 
 TOPICS = {"chartevents": "icu.v2.chartevents", "labevents": "icu.v2.labevents"}
-BUSINESS_TOPICS = {
-    "chartevents": "icu.v2.chartevents.cleaned",
-    "labevents": "icu.v2.labevents.cleaned",
-    "aggregates": "icu.v2.vitals.15m",
-    "alerts": "icu.v2.alerts",
-}
-DLQ_TOPIC = "icu.v2.deadletter"
 CORE_TOPICS = (*TOPICS.values(), *BUSINESS_TOPICS.values(), DLQ_TOPIC)
 CHART_FIELDS = frozenset((
     "schema_version", "event_id", "subject_id", "hadm_id", "stay_id", "bed_id",
@@ -40,7 +34,7 @@ def _unique_pairs(pairs):
 
 
 def parse_event(raw):
-    event = json.loads(raw, parse_constant=_invalid_constant, object_pairs_hook=_unique_pairs)
+    event = json.loads(raw, parse_constant=_invalid_constant, object_pairs_hook=_unique_pairs, parse_float=finite_json_float)
     if not isinstance(event, dict):
         raise ValueError("Expected a JSON object")
     return event

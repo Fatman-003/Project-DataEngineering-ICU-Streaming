@@ -26,7 +26,8 @@ from kafka_topics import reset_demo_topics, topic_offsets
 from contracts import CORE_TOPICS
 from run_icu_demo import run_demo
 
-V2_JOB_NAME = "ICU V2 telemetry, 15m statistics and sustained hypotension"
+V2_JOB_NAME = "ICU business telemetry, 5m windows and 30s hypotension"
+PROJECT_JOB_NAMES = {V2_JOB_NAME, "ICU V2 telemetry, 15m statistics and sustained hypotension"}
 TERMINAL_STATES = {"CANCELED", "FINISHED", "FAILED", "SUSPENDED"}
 SERVICES = {
     "icu-flink-jobmanager": ("jobmanager", "icu-pyflink:2.3.0-kafka5.0.0-2.2-v2"),
@@ -61,7 +62,7 @@ def project_container(container, project=PROJECT):
 
 
 def project_jobs(jobs):
-    return [job for job in jobs if job.get("name") == V2_JOB_NAME
+    return [job for job in jobs if job.get("name") in PROJECT_JOB_NAMES
             and job.get("state") not in TERMINAL_STATES]
 
 
@@ -323,7 +324,7 @@ class Orchestrator:
                 return self.reachable("/jobs/overview", "http://127.0.0.1:8081")
             self.wait(rest_ready, 60, "Running JobManager is not inspectable; refusing to reset potentially unrelated jobs")
             jobs = self.http("/jobs/overview")["jobs"]
-        foreign = [j for j in jobs if j["state"] not in TERMINAL_STATES and j["name"] != V2_JOB_NAME]
+        foreign = [j for j in jobs if j["state"] not in TERMINAL_STATES and j["name"] not in PROJECT_JOB_NAMES]
         if foreign:
             raise RuntimeError("Unrelated Flink jobs are active; they will not be canceled or displaced: "
                                + ", ".join(j["name"] for j in foreign))
@@ -387,9 +388,9 @@ class Orchestrator:
             if self.args.skip_build:
                 raise RuntimeError("Required images are missing and -SkipBuild was set: " + ", ".join(missing))
             self.compose_command("build", "jobmanager", "realtime-gateway", timeout=1200, show=True)
-        elif self.args.fast_verify and not self.args.skip_build:
-            # COPY'd gateway code must match the source under verification.
-            self.compose_command("build", "realtime-gateway", timeout=1200)
+        elif not self.args.skip_build:
+            # Cached builds keep the compiled header bridge and copied Gateway current.
+            self.compose_command("build", "jobmanager", "realtime-gateway", timeout=1200)
         self.compose_command("up", "-d", "--no-build", "jobmanager", "taskmanager", timeout=180)
         def slots_ready():
             try:
@@ -422,11 +423,16 @@ class Orchestrator:
                                   "icu-timescaledb", check=False)
             return result.returncode == 0 and result.stdout.strip() == "healthy"
         self.wait(db_healthy, 120, "TimescaleDB did not pass pg_isready healthcheck")
-        from db_admin import initialize, connect
-        self.report["database"] = initialize(keep=self.args.keep_database_data)
+        from db_admin import initialize, connect, legacy_sources, backup_database, database_snapshot
+        with connect() as connection:
+            breaking = legacy_sources(connection)
+            if breaking:
+                self.report["database_before_migration"] = database_snapshot(connection)
+        backup = backup_database(self.docker) if breaking else None
+        self.report["database"] = initialize(keep=self.args.keep_database_data, backup_path=backup, quiesced=True)
         if self.args.keep_database_data:
             with connect() as connection:
-                latest = connection.execute("SELECT max(event_time) FROM chartevents").fetchone()[0]
+                latest = connection.execute("SELECT max(sample_time) FROM patient_telemetry_stream").fetchone()[0]
             if latest is not None:
                 self.report["retained_event_start_after"] = latest.isoformat()
 
@@ -517,7 +523,7 @@ class Orchestrator:
         self.ensure_infrastructure()
         self.ensure_database_images()
         self.start_database()
-        self.mark("Reset only the seven V2 topics and three project consumer groups")
+        self.mark("Reset only six application topics and three project consumer groups")
         self.report["reset"] = reset_demo_topics()
         if self.args.fast_verify:
             # Both services start against empty topics while Flink boots. The
@@ -539,9 +545,9 @@ class Orchestrator:
               "============================================================\nKafka Broker: localhost:9092 READY\n"
               "Flink UI: http://localhost:8081 READY\nKafka UI: http://localhost:8082 READY\n"
               "Realtime Gateway: http://localhost:8083 READY\n"
-              "TimescaleDB: localhost:5432 READY (9 tables / 4 hypertables)\n"
+              "TimescaleDB: localhost:5432 READY (11 target tables / 4 target hypertables)\n"
               "Storage Writer: icu-timescale-writer-v2 READY\n"
-              "Gateway Snapshot: http://localhost:8083/api/snapshot\nKafka V2 topics: 7 / 7 READY (empty)\n"
+              "Gateway Snapshot: http://localhost:8083/api/snapshot\nKafka application topics: 6 / 6 READY (empty)\n"
               "Flink V2 job: RUNNING, checkpoint completed\nPrevious demo state: "
               + ("KEPT" if self.args.keep_database_data else "RESET") + "\n"
               "Existing Kafka broker: PRESERVED\n============================================================", flush=True)
@@ -560,14 +566,20 @@ class Orchestrator:
                     from fast_verify import verify, SPEED
                     self.mark(f"Fast end-to-end verification ({SPEED}x event-time, configured alert rule)")
                     self.report["verification"] = verify()
-                    from db_verify import verify_database
+                    from db_verify import verify_database, verify_status_change
                     self.report["database_verification"] = verify_database()
+                    self.report["status_verification"] = verify_status_change()
+                    from kafka_topics import retire_obsolete
+                    from db_admin import connect, retire_legacy
+                    self.report["retired_topics"] = retire_obsolete(verified=True)
+                    with connect() as connection:
+                        self.report["final_database_structure"] = retire_legacy(connection, verified=True)
                     self.report.update(outcome="verified", total_seconds=time.monotonic() - invocation_began)
                     self.save_report()
-                    print(json.dumps({"MAP EPISODE CONTINUITY": self.report["verification"].get("map_episode_continuity"),
-                                      "FAST ALERT VERIFICATION": {key: value for key, value in
-                                          self.report["verification"].items() if key != "map_episode_continuity"},
+                    print(json.dumps({"KAFKA / ALERT / GATEWAY VERIFICATION": self.report["verification"],
                                       "DATABASE VERIFICATION": self.report["database_verification"],
+                                      "ALERT STATUS VERIFICATION": self.report["status_verification"],
+                                      "FINAL DATABASE STRUCTURE": self.report["final_database_structure"],
                                       "startup_seconds": self.report["startup_seconds"],
                                       "total_seconds": self.report["total_seconds"]}, indent=2), flush=True)
                     return 0

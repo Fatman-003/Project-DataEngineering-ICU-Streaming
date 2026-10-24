@@ -1,4 +1,4 @@
-"""Canonical V2 Flink job: two RAW inputs, four business sinks, one deadletter sink."""
+"""Two unchanged RAW inputs, three UI business sinks and one shared DLQ."""
 import argparse
 import json
 from dataclasses import replace
@@ -9,7 +9,7 @@ from validation import ValidationError, validate_event
 from dedup import dedup_identity, flink_deduplicator
 from event_time import watermark_strategy, flink_time_classifier
 from dlq import payload_bytes, rejection, encode
-from business_outputs import attach_sink, processed_json
+from business_outputs import attach_sink, attach_telemetry
 
 
 def parse_and_validate(source, stream):
@@ -84,14 +84,19 @@ def main():
         clean = timed.key_by(lambda value: stay_key(json.loads(value)["event"]), key_type=Types.STRING()).process(
             flink_time_classifier(config.dedup_state_ttl_hours, dlq_tag), output_type=Types.STRING()
         ).name("Event-time quality " + stream).uid("v2-time-" + stream)
-        attach_sink(clean.map(processed_json, output_type=Types.STRING()), stream, config)
         if stream == "chartevents":
-            attach_sink(attach_windows(clean, business), "aggregates", config)
+            wide = attach_telemetry(clean, config.dedup_state_ttl_hours, dlq_tag)
+            attach_sink(wide, "telemetry", config)
+            attach_sink(attach_windows(wide, business), "aggregates", config)
             attach_sink(attach_hypotension(clean, business, config.dedup_state_ttl_hours), "alerts", config)
+            errors.append(wide.get_side_output(dlq_tag))
+        else:
+            # Consume and validate sparse labs; no lab business contract exists.
+            clean.print().name("Validated labs (projection deferred)")
         errors.extend((valid.get_side_output(dlq_tag), deduped.get_side_output(dlq_tag),
                        clean.get_side_output(dlq_tag)))
     attach_sink(errors[0].union(*errors[1:]), "deadletter", config)
-    env.execute("ICU V2 telemetry, 15m statistics and sustained hypotension")
+    env.execute("ICU business telemetry, 5m windows and 30s hypotension")
 
 
 if __name__ == "__main__":

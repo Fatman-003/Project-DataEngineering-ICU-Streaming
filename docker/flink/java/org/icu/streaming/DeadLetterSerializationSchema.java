@@ -33,12 +33,12 @@ public final class DeadLetterSerializationSchema implements KafkaRecordSerializa
             if (stayId == null || stayId.isNull()) {
                 stayId = envelope.get("mapped_stay_id");
             }
-            JsonNode originalKey = envelope.get("original_key_base64");
+            JsonNode originalKey = envelope.get("kafka_key");
             byte[] key;
             if (stayId != null && (stayId.isIntegralNumber() || stayId.isTextual()) && !stayId.asText().isEmpty()) {
                 key = stayId.asText().getBytes(StandardCharsets.UTF_8);
             } else if (originalKey != null && originalKey.isTextual()) {
-                key = Base64.getDecoder().decode(originalKey.asText());
+                key = originalKey.asText().getBytes(StandardCharsets.UTF_8);
             } else {
                 JsonNode dlqId = envelope.get("dlq_id");
                 if (dlqId == null || !dlqId.isTextual() || dlqId.asText().isEmpty()) {
@@ -47,7 +47,18 @@ public final class DeadLetterSerializationSchema implements KafkaRecordSerializa
                 key = dlqId.asText().getBytes(StandardCharsets.UTF_8);
             }
             // Kafka uses send time. The original logical event-time stays inside the DLQ JSON.
-            return new ProducerRecord<>(topic, key, value.getBytes(StandardCharsets.UTF_8));
+            ProducerRecord<byte[], byte[]> record = new ProducerRecord<>(topic, key, value.getBytes(StandardCharsets.UTF_8));
+            record.headers().add("content-type", "application/json; charset=utf-8".getBytes(StandardCharsets.UTF_8));
+            String[][] fields = {{"schema-version", "schema_version"}, {"message-id", "message_id"},
+                {"event-type", "event_type"}, {"producer", "producer"}, {"trace-id", "trace_id"},
+                {"dlq-source-topic", "source_topic"}, {"dlq-error-code", "error_code"}};
+            for (String[] field : fields) {
+                JsonNode item = envelope.get(field[1]);
+                if (item != null && !item.isNull()) {
+                    record.headers().add(field[0], item.asText().getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            return record;
         } catch (IOException error) {
             throw new IllegalArgumentException("Invalid internally generated DLQ envelope", error);
         }

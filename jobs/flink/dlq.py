@@ -1,12 +1,9 @@
-"""Human-readable V2 rejections, with exact byte preservation for non-UTF8 inputs."""
+"""Shared proposal DLQ envelope, including unchanged RAW sources."""
 import base64
-import hashlib
-import json
-ERROR_TYPES = frozenset({"PARSE_ERROR", "SCHEMA_ERROR", "VALUE_ERROR", "DUPLICATE_EVENT", "LATE_EVENT"})
+from business_contract import encode, deadletter
 
-
-def encode(value):
-    return json.dumps(value, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+ERROR_TYPES = frozenset({"PARSE_ERROR", "SCHEMA_ERROR", "VALUE_ERROR", "DUPLICATE_EVENT", "LATE_EVENT",
+                         "IDEMPOTENCY_CONFLICT"})
 
 
 def payload_bytes(source):
@@ -16,31 +13,22 @@ def payload_bytes(source):
 def rejection(source, stream, error_type, reason, event=None, failed_at=None):
     if error_type not in ERROR_TYPES:
         raise ValueError(error_type)
+    code = {"PARSE_ERROR": "JSON_PARSE_ERROR", "SCHEMA_ERROR": "INVALID_FIELD_TYPE",
+            "VALUE_ERROR": "VALUE_OUT_OF_RANGE", "DUPLICATE_EVENT": "PROCESSING_ERROR",
+            "LATE_EVENT": "PROCESSING_ERROR", "IDEMPOTENCY_CONFLICT": "IDEMPOTENCY_CONFLICT"}[error_type]
+    stage = "DESERIALIZATION" if error_type == "PARSE_ERROR" else (
+        "PROCESSING" if error_type in ("DUPLICATE_EVENT", "LATE_EVENT", "IDEMPOTENCY_CONFLICT") else "VALIDATION")
     raw = payload_bytes(source)
-    identity = [source["topic"], source["partition"], source["offset"], error_type]
-    result = {
-        "schema_version": "2.0",
-        "dlq_id": "dlq-" + hashlib.sha256(encode(identity).encode()).hexdigest(),
-        "error_type": error_type, "error_reason": reason,
-        "original_topic": source["topic"], "original_partition": source["partition"],
-        "original_offset": source["offset"],
-        "raw_payload": None if raw is None else raw.decode("utf-8", errors="replace"),
-    }
-    if raw is not None:
+    if error_type == "PARSE_ERROR" and raw is not None:
         try:
             raw.decode("utf-8", errors="strict")
         except UnicodeError:
-            result["raw_payload_base64"] = source["payload_base64"]
-    event = event or {}
-    for field in ("event_id", "subject_id", "hadm_id", "bed_id", "event_time"):
-        value = event.get(field)
-        result[field] = value if type(value) in (str, int) else None
-    stay = event.get("stay_id", event.get("mapped_stay_id"))
-    result["stay_id"] = stay if type(stay) is int else None
-    return result
+            code = "INVALID_UTF8"
+    if event is not None and event.get("schema_version") != "2.0":
+        code = "SCHEMA_VERSION_UNSUPPORTED"
+    return deadletter(source, code, error_type + ": " + reason, stage=stage)
 
 
 def rejection_log(envelope):
-    return encode({key: envelope.get(key) for key in (
-        "dlq_id", "event_id", "stay_id", "error_type", "error_reason",
-        "original_topic", "original_partition", "original_offset")})
+    return encode({key: envelope.get(key) for key in ("dlq_id", "error_code", "error_message",
+                                                     "source_topic", "source_partition", "source_offset")})

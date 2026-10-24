@@ -98,9 +98,9 @@ class ResetTests(unittest.TestCase):
         admin = MemoryAdmin()
         for _ in range(2):
             reset_demo_topics(admin=admin, bounds_reader=bounds)
-        self.assertEqual(len(admin.deleted), 14)
+        self.assertEqual(len(admin.deleted), 12)
         self.assertNotIn("test-events", admin.deleted)
-        self.assertEqual(len(admin.topics), 9)
+        self.assertEqual(len(admin.topics), 8)
 
     def test_topic_creation_waits_for_broker_metadata_visibility(self):
         admin, clock = MemoryAdmin(), Clock()
@@ -360,13 +360,23 @@ class FakeProducer:
 
 
 class SimulatorTests(unittest.TestCase):
-    def test_defaults_and_one_signal_per_patient_per_second(self):
+    def test_fractional_minutes_from_powershell_do_not_add_an_eleventh_tick(self):
+        duration=float("0.166666666666667")
+        records=list(simulator.demo_events(duration))
+        self.assertEqual(sum(t==TOPICS["chartevents"] for t,e in records),240)
+        clock=Clock();producer=FakeProducer(clock)
+        with patch("confluent_kafka.Producer",return_value=producer), patch.object(
+                simulator.time,"monotonic",clock.monotonic),patch.object(simulator.time,"sleep",clock.sleep):
+            simulator.run_demo(duration_minutes=duration,start=simulator.DEFAULT_START,quiet=True)
+        self.assertEqual(len(producer.records),244)
+
+    def test_defaults_and_all_signals_per_patient_per_second(self):
         args = simulator.arguments([])
         self.assertEqual((args.duration_minutes, args.interval_seconds, args.speed, args.loop), (6, 1, 1, False))
         for second, signal in enumerate(SIGNALS):
             records = [value for topic, value in simulator.events_at(second) if topic == TOPICS["chartevents"]]
-            self.assertEqual(len(records), 4)
-            self.assertEqual({e["signal_name"] for e in records}, {signal})
+            self.assertEqual(len(records), 24)
+            self.assertEqual({e["signal_name"] for e in records}, set(SIGNALS))
 
     def test_all_six_minutes_keep_four_real_identities_and_contracts(self):
         identities = {p["stay_id"] for p in simulator.PATIENTS}
@@ -377,8 +387,8 @@ class SimulatorTests(unittest.TestCase):
     def test_sparse_edges_and_labs(self):
         raw = list(simulator.demo_events())
         charts = [e for topic, e in raw if topic == TOPICS["chartevents"]]
-        self.assertEqual(len(charts), 4 * 360 + 4)
-        for suffix, at in (("-ooo", 35), ("-invalid", 210), ("-late", 130)):
+        self.assertEqual(len(charts), 24 * 360 + 4)
+        for suffix, at in (("-ooo", 44), ("-invalid", 210), ("-late", 130)):
             selected = [e for e in charts if e["event_id"].endswith(suffix)]
             self.assertEqual(len(selected), 1)
             self.assertEqual(event_timestamp_ms(selected[0]) - event_timestamp_ms(simulator.chart_event(simulator.PATIENTS[3], "HR", 0, simulator.DEFAULT_START)), at * 1000)
@@ -397,8 +407,9 @@ class SimulatorTests(unittest.TestCase):
         self.assertEqual(len(outputs), 1)
         self.assertEqual(outputs[0]["stay_id"], simulator.PATIENTS[1]["stay_id"])
         first = event_timestamp_ms(simulator.chart_event(simulator.PATIENTS[1], "MAP", 0, simulator.DEFAULT_START))
-        self.assertEqual(event_timestamp_ms({"event_time": outputs[0]["episode_start"]}) - first, 13000)
-        self.assertEqual(event_timestamp_ms({"event_time": outputs[0]["trigger_time"]}) - first, 313000)
+        from hypotension import alert_identity
+        self.assertEqual(outputs[0]["alert_id"],alert_identity(simulator.PATIENTS[1]["stay_id"],first+12000))
+        self.assertEqual(event_timestamp_ms({"event_time": outputs[0]["alert_time"]}) - first, 42000)
 
     def test_monotonic_pacing_has_no_accumulated_sleep_drift(self):
         clock = Clock()
@@ -406,7 +417,7 @@ class SimulatorTests(unittest.TestCase):
         with patch("confluent_kafka.Producer", return_value=producer), patch.object(simulator.time, "monotonic", clock.monotonic), patch.object(simulator.time, "sleep", clock.sleep):
             simulator.run_demo(duration_minutes=0.1, start=simulator.DEFAULT_START, quiet=True)
         charts = [r for r in producer.records if r[1] == TOPICS["chartevents"]]
-        self.assertEqual([r[0] for r in charts], [1000 + second for second in range(6) for _ in range(4)])
+        self.assertEqual([r[0] for r in charts], [1000 + second for second in range(6) for _ in range(24)])
         self.assertEqual(clock.now, 1006)
         self.assertTrue(producer.flushed)
 
@@ -416,8 +427,8 @@ class SimulatorTests(unittest.TestCase):
         with patch("confluent_kafka.Producer", return_value=producer), patch.object(simulator.time, "monotonic", clock.monotonic), patch.object(simulator.time, "sleep", clock.sleep):
             simulator.run_demo(duration_minutes=0.05, interval_seconds=0.5, start=simulator.DEFAULT_START, quiet=True)
         charts = [r for r in producer.records if r[1] == TOPICS["chartevents"]]
-        self.assertEqual([charts[i * 4][3]["signal_name"] for i in range(6)], list(SIGNALS))
-        self.assertEqual(event_timestamp_ms(charts[4][3]) - event_timestamp_ms(charts[0][3]), 500)
+        self.assertEqual([charts[i][3]["signal_name"] for i in range(6)], list(SIGNALS))
+        self.assertEqual(event_timestamp_ms(charts[24][3]) - event_timestamp_ms(charts[0][3]), 500)
 
     def test_delivery_failure_still_flushes_and_stops(self):
         clock = Clock()

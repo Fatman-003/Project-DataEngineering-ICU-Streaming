@@ -1,9 +1,11 @@
-"""Bootstrap seven topics on the existing broker; V1 deletion is gated by live smoke."""
+"""Bootstrap six application topics and retire verified obsolete ICU outputs."""
 import sys
 import time
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "jobs/flink"))
 from contracts import CORE_TOPICS, DLQ_TOPIC
+OBSOLETE_TOPICS = ("icu.v2.chartevents.cleaned", "icu.v2.labevents.cleaned",
+                   "icu.v2.vitals.15m", "icu.v2.alerts", "icu.v2.deadletter")
 
 V1_TOPICS = (
     "icu.v1.vitals.numeric", "icu.v1.clinical.events", "icu.v1.vitals.waveform", "icu.v1.deadletter",
@@ -28,7 +30,7 @@ def ensure_topics(bootstrap="localhost:9092", *, admin=None, monotonic=time.mono
     deadline = monotonic() + timeout
     while True:
         current = admin.list_topics(timeout=10).topics
-        extras = {name for name in current if name.startswith("icu.v2.")} - set(CORE_TOPICS)
+        extras = {name for name in current if name.startswith("icu.v2.")} - set(CORE_TOPICS) - set(OBSOLETE_TOPICS)
         if extras:
             raise RuntimeError(f"Unexpected V2 topics: {sorted(extras)}")
         not_ready = [topic for topic in CORE_TOPICS if topic not in current
@@ -61,7 +63,7 @@ def reset_demo_topics(bootstrap="localhost:9092", *, admin=None, bounds_reader=N
                       monotonic=time.monotonic, sleep=time.sleep, timeout=90):
     """Only call after the V2 job, gateway and owned producer have stopped.
 
-    Recreate the seven allowlisted topics and delete only their three inactive
+    Recreate the six allowlisted topics and delete only their three inactive
     consumer groups. Neither broker storage nor unrelated topics are mutated.
     """
     from confluent_kafka import KafkaException, KafkaError
@@ -69,7 +71,7 @@ def reset_demo_topics(bootstrap="localhost:9092", *, admin=None, bounds_reader=N
     admin = admin or AdminClient({"bootstrap.servers": bootstrap})
     bounds_reader = bounds_reader or (lambda topics: topic_offsets(topics, bootstrap))
     before = admin.list_topics(timeout=10).topics
-    extras = {name for name in before if name.startswith("icu.v2.")} - set(CORE_TOPICS)
+    extras = {name for name in before if name.startswith("icu.v2.")} - set(CORE_TOPICS) - set(OBSOLETE_TOPICS)
     if extras:
         raise RuntimeError(f"Unexpected V2 topics; refusing a partial reset: {sorted(extras)}")
     unrelated = {name: tuple(sorted((p, tuple(v.replicas)) for p, v in data.partitions.items()))
@@ -82,7 +84,7 @@ def reset_demo_topics(bootstrap="localhost:9092", *, admin=None, bounds_reader=N
     deadline = monotonic() + timeout
     while set(admin.list_topics(timeout=10).topics) & set(CORE_TOPICS):
         if monotonic() >= deadline:
-            raise RuntimeError("Timed out waiting for the seven V2 topics to disappear")
+            raise RuntimeError("Timed out waiting for the six application topics to disappear")
         sleep(0.25)
     # Deleting an inactive group removes any offsets still referencing deleted topic IDs.
     for group in DEMO_GROUPS:
@@ -102,8 +104,8 @@ def reset_demo_topics(bootstrap="localhost:9092", *, admin=None, bounds_reader=N
     while True:
         try:
             offsets = bounds_reader(CORE_TOPICS)
-            if any(partitions != {"0": [0, 0]} for partitions in offsets.values()) or len(offsets) != 7:
-                raise RuntimeError("V2 reset did not leave seven empty topics; another producer may still be active")
+            if any(partitions != {"0": [0, 0]} for partitions in offsets.values()) or len(offsets) != len(CORE_TOPICS):
+                raise RuntimeError("V2 reset did not leave six empty application topics; another producer may still be active")
             break
         except KafkaException:
             if monotonic() >= deadline:
@@ -125,6 +127,33 @@ def reset_demo_topics(bootstrap="localhost:9092", *, admin=None, bounds_reader=N
             "unrelated_before": unrelated_bounds, "unrelated_after": after_bounds}
 
 
+def retire_obsolete(bootstrap="localhost:9092", verified=False):
+    """Only after new end-to-end verification and no active old subscriptions."""
+    if not verified:
+        raise RuntimeError("New contract must pass live verification before topic retirement")
+    from confluent_kafka.admin import AdminClient
+    admin = AdminClient({"bootstrap.servers": bootstrap})
+    groups = admin.list_consumer_groups().result(10).valid
+    ids = [group.group_id for group in groups]
+    if ids:
+        descriptions = admin.describe_consumer_groups(ids)
+        for future in descriptions.values():
+            for member in future.result(10).members:
+                topics = {p.topic for p in member.assignment.topic_partitions}
+                if topics & set(OBSOLETE_TOPICS):
+                    raise RuntimeError("Active consumer still depends on obsolete ICU topics")
+    existing = admin.list_topics(timeout=10).topics
+    targets = [topic for topic in OBSOLETE_TOPICS if topic in existing]
+    for future in admin.delete_topics(targets, operation_timeout=15).values() if targets else ():
+        future.result(20)
+    deadline = time.monotonic() + 30
+    while set(admin.list_topics(timeout=10).topics) & set(targets):
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Obsolete ICU topic deletion did not complete")
+        time.sleep(0.25)
+    return targets
+
+
 def remove_verified_v1(bootstrap="localhost:9092"):
     """Called only after all live smoke assertions pass, never during startup."""
     from confluent_kafka.admin import AdminClient
@@ -138,4 +167,4 @@ def remove_verified_v1(bootstrap="localhost:9092"):
 
 
 if __name__ == "__main__":
-    print("V2 topics ready:\n" + "\n".join(ensure_topics()))
+    print("Application topics ready:\n" + "\n".join(ensure_topics()))

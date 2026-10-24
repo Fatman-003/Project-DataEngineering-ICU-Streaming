@@ -1,175 +1,187 @@
-# Quy tắc cảnh báo và quản lý False Alarm
+# Quy tắc cảnh báo MAP và quản lý False Alarm
 
-## 1. Mục tiêu
+`HYPOTENSION_SUSTAINED` là cảnh báo sớm khi một episode có đủ MAP thấp.
+Đây **không phải chẩn đoán sepsis**. Ngưỡng và cơ chế lọc dưới đây là quyết
+định kỹ thuật của dự án, chưa được trình bày như quy tắc đã xác nhận lâm sàng.
+Chỉ MAP hợp lệ tham gia rule; HR/RR/SBP/DBP/SpO2/Lactate không xác nhận recovery.
 
-Cảnh báo `SUSTAINED_HYPOTENSION` theo dõi một episode MAP thấp kéo dài.
-Hệ thống chấp nhận những lần MAP tạm trở lại vùng bình thường trong thời gian
-ngắn, nhưng không tính khoảng hồi phục đó là thời gian MAP thấp.
+Nguồn cấu hình: [runtime_config.py](../jobs/flink/runtime_config.py).
+Nguồn xử lý: [hypotension.py](../jobs/flink/hypotension.py).
+Các biên được kiểm tra trong [test_alarm_quality.py](../tests/test_alarm_quality.py).
 
-Đây là cảnh báo huyết động sớm dựa trên MAP cho dự án. Nó không phải chẩn đoán
-sepsis. Recovery debounce 30 giây là **quyết định kỹ thuật của dự án**, nhằm
-giảm reset/flapping do dao động ngắn; chưa phải ngưỡng được xác nhận lâm sàng.
+## Các khoảng thời gian có vai trò khác nhau
 
-## 2. Các ngưỡng chính
-
-Nguồn cấu hình là [runtime_config.py](../jobs/flink/runtime_config.py).
-
-| Ngưỡng | Giá trị | Dùng để làm gì? |
+| Cấu hình | Giá trị hiện tại | Vai trò |
 |---|---|---|
-| MAP thấp | <65 mmHg | Bắt đầu hoặc tiếp tục low evidence. |
-| Hypotension confirmation | 300 giây event-time | Tổng thời gian MAP thấp cần có trong một episode trước khi cảnh báo. |
-| Maximum MAP sample gap | ≤90 giây | Khoảng cách event-time tối đa giữa hai MAP được chấp nhận liên tiếp. |
-| Recovery threshold | ≥65 mmHg | Bắt đầu `RECOVERY_CANDIDATE`. |
-| Recovery confirmation | 30 giây event-time | Xác nhận recovery, kết thúc episode và re-arm. |
-| Out-of-order/lateness tolerance | 30 giây | Tạo bounded watermark để xác định event còn đủ mới cho realtime. |
+| MAP thấp | `<65 mmHg` | Low observation |
+| MAP normal/positive | `>=65 mmHg` | Positive recovery observation |
+| Low evidence | `>=30 giây` Event Time | Đủ điều kiện cảnh báo, xét ở bucket low |
+| MAP bucket | `1 giây` UTC | Tối đa một observation quyết định/bucket |
+| Recovery | `5` positive bucket trong `(t−10s, t]` | Xác nhận recovery, xóa evidence và re-arm |
+| Out-of-order tolerance | `2 giây` | Tạo bounded Watermark |
+| Maximum MAP gap | `3 giây`, gồm biên bằng 3 | Giữ continuity của episode |
+| Statistical window | `5 phút`, slide `1 phút` | Mean telemetry, không phải thời gian xác nhận alert |
 
-Hai giá trị 30 giây có vai trò riêng: một giá trị xác nhận recovery, giá trị
-kia dùng cho thứ tự/freshness của stream. Chúng không thay thế gap 90 giây
-hoặc thời gian xác nhận 300 giây. Event tại hoặc trước watermark hiệu lực
-lúc đến là `LATE_EVENT`; đây không phải phép trừ đồng hồ thực với `event_time`.
+## Chuẩn hóa Normal và HF thành observation 1 giây
 
-## 3. Hypotension episode hoạt động như thế nào?
+MAP đã qua parse/validation/dedup/Event Time được nhóm theo stay và bucket
+UTC `[s, s+1 giây)`. Representative của bucket là **median** các giá trị MAP
+được giữ lại. Với số mẫu chẵn, median là trung bình hai giá trị giữa; ví dụ
+64,9 và 65,1 có median 65, được xem là normal. Không làm tròn số về integer
+trước khi so ngưỡng.
 
-MAP <65 bắt đầu một episode hoặc tiếp tục phần MAP thấp đang quan sát.
-Khi một MAP thấp được chấp nhận chứng minh tổng low evidence đã đủ 300 giây,
-Flink phát một `SUSTAINED_HYPOTENSION`. Các MAP thấp sau đó trong cùng episode
-không tạo thêm alert.
+Mỗi bucket giữ tối đa **256 giá trị thực** bằng deterministic bottom-k theo
+hash `event_id`. Normal/HF100/HF200 có tối đa 1/100/200 MAP mỗi giây cho một
+stay trong workload chuẩn, nên giữ đủ và median là chính xác. Khi một bucket
+có hơn 256 MAP hợp lệ, median dùng tập mẫu giữ lại, không phải median chính
+xác của toàn bộ đầu vào. Thứ tự đến không làm thay đổi lựa chọn bottom-k.
+Giới hạn này chỉ áp dụng rule MAP; không làm giảm số RAW hay wide telemetry.
 
-Episode có thể gồm nhiều đoạn thấp, ngăn bởi transient recovery. Vì vậy
-không mô tả rule là “MAP tuyệt đối thấp không có bất kỳ mẫu normal nào trong
-năm phút”. `episode_start` vẫn là lúc episode bắt đầu; `trigger_time` là mẫu
-thấp xác nhận đủ low evidence. Hai mốc này có thể cách nhau hơn 300 giây.
+Một bucket có median `>=65` chỉ thêm **một** positive observation. Vì vậy
+5 RAW sample normal trong 25 ms của HF200 không thể tự xác nhận recovery.
+Năm bucket normal ở năm giây khác nhau có cùng ý nghĩa trong Normal và HF.
 
-## 4. Recovery không reset ngay lập tức
+Bucket chỉ được xử lý khi Watermark đi qua cuối bucket; phần đã chốt được
+gộp vào episode state rồi bỏ khỏi pending state. Watermark tiến mà không có
+MAP mới không tự sinh observation hoặc tự cộng low/recovery evidence.
 
-Khi MAP trở lại ≥65, hệ thống chuyển sang `RECOVERY_CANDIDATE`. Nếu MAP thấp
-lại trước 30 giây, candidate bị hủy; episode và low evidence trước đó được
-giữ. Nếu khoảng recovery đạt ít nhất 30 giây, episode kết thúc, low evidence
-được xóa và lần MAP thấp tiếp theo bắt đầu episode mới.
+## Low evidence và một alert mỗi episode
 
-Thời gian được kiểm chứng khi có MAP tiếp theo được chấp nhận, với gap không
-quá 90 giây. Ví dụ normal tại T+150, normal tại T+179 vẫn là candidate; normal
-tại T+180 xác nhận recovery. Nếu MAP thấp trở lại ngay T+180, khoảng normal
-đã kéo dài đúng 30 giây cũng kết thúc episode cũ, rồi mẫu thấp đó mở episode
-mới. Nếu thấp lại T+179 thì chỉ có 29 giây recovery: episode được giữ.
+Bucket low đầu tiên mở episode với evidence bằng 0. Mỗi observation tiếp
+theo hợp lệ cộng chênh lệch thời gian giữa hai bucket **nếu bucket trước là
+low**, với điều kiện continuity còn hợp lệ. Bucket trước normal thì không
+cộng khoảng đó. Ví dụ chỉ có low ở T+0 chưa chứng minh 30 giây; low mỗi giây
+từ T+0 đến T+29 cho 29 giây, low tại T+30 mới chứng minh 30 giây.
 
-Watermark tiến lên mà không có MAP tiếp theo không tự tạo bằng chứng recovery.
+Flink chỉ xét phát khi bucket hiện tại cũng là low, evidence ít nhất 30 giây
+và episode chưa alert. Bucket normal có thể đóng một khoảng low nhưng không
+tự phát alert. Khi đủ điều kiện, phát một `SEPSIS_ALERT_CREATED` vào
+`icu.alerts`: `alert_type=HYPOTENSION_SUSTAINED`, `severity=CRITICAL`,
+`status=ACTIVE`. `alert_time` là đầu bucket kích hoạt, `trigger_value` là
+median bucket đó. Các bucket low sau trong cùng episode không phát lặp.
 
-## 5. Tại sao không dùng số lượng sample?
+`alert_id` là UUIDv5 theo stay, loại alert và thời điểm mở episode; retry cùng
+episode giữ identity. Episode start chỉ ở processing state và tham gia ID;
+body/table không có cột `episode_start`.
 
-Thời gian 30 giây có ý nghĩa ổn định hơn một con số như “ba mẫu normal”.
-Cadence demo thường gần một MAP mỗi bệnh nhân mỗi sáu giây, nên 30 giây ứng
-với vài mẫu MAP. Khi cadence thay đổi, nguồn quyết định vẫn là event-time,
-không phải số mẫu.
+## Transient recovery và confirmed recovery
 
-## 6. Không tính transient recovery vào low duration
+Một observation normal không reset ngay episode. Các positive timestamp
+được giữ trong rolling interval **`(t−10s, t]`**: đúng T−10 bị loại, timestamp
+mới hơn T−10 được tính. Đủ 5 positive thì **confirmed recovery**: xóa episode,
+xóa low evidence và re-arm. Positive không bắt buộc liên tiếp; xen giữa có
+low vẫn có thể recovery nếu tổng 5 positive còn trong cửa sổ và gap hợp lệ.
 
-Ví dụ, với các MAP hợp lệ cách nhau không quá 90 giây:
+Chưa đủ 5 là transient recovery: episode/evidence vẫn giữ; khoảng normal
+không đóng góp low time. Khi low trở lại, tiếp tục tích lũy phần low mới.
+Không có cooldown cố định 15 phút. Low sau confirmed recovery bắt đầu một
+episode độc lập, phải tự tích đủ 30 giây mới phát alert mới.
+
+Ví dụ các bucket normal tại T+10,11,12,13 mới là 4 positive; bucket T+14
+normal chốt xong thì đủ 5, không cần đợi thêm 10 giây. Ngược lại normal tại
+T+10,13,16,19,22 không đủ 5 trong cùng `(t−10,t]`: tại T+22, T+10 đã hết hạn.
+
+## Khoảng normal không cộng vào low duration
+
+Với MAP được quan sát mỗi giây, không bị gap:
 
 ```text
-T+0   → T+150: 150 giây low
-T+150 → T+170:  20 giây normal / recovery candidate
-T+170 → T+320: 150 giây low
+T+0  → T+15 : 15 giây low
+T+15 → T+18 :  3 giây normal (3 positive, chưa recovery)
+T+18 → T+33 : 15 giây low
+
+T+30: low evidence = 27 giây
+T+33: low evidence = 30 giây → alert khi bucket T+33 được chốt
 ```
 
-Candidate 20 giây không reset toàn bộ episode và cũng không được cộng vào
-low evidence. Tại T+300 chỉ có 280 giây thấp; tại T+320 mới có 300 giây thấp
-và có thể phát alert. Chênh lệch giữa các quan sát được tính theo trạng thái
-MAP đứng trước khoảng đó: mẫu normal đóng đoạn thấp; mẫu thấp trở lại đóng
-khoảng recovery. Không tính thêm thời gian khi không có quan sát chứng minh.
+Episode kéo dài 33 giây, low evidence chỉ 30 giây. Vì vậy rule không yêu cầu
+MAP thấp tuyệt đối không gián đoạn suốt 30 giây khi transient recovery được
+chấp nhận. Confirmed recovery mới xóa evidence cũ.
 
-## 7. State machine đơn giản
+## Out-of-order, Late Event và sample gap
 
-```text
-NORMAL
-   |
-   | MAP <65
-   v
-LOW_EPISODE
-   |
-   | MAP ≥65
-   v
-RECOVERY_CANDIDATE
-   |
-   +----------------------------------+
-   |                                  |
-   | thấp lại trước 30s               | recovery đạt ≥30s
-   v                                  v
-LOW_EPISODE                       RECOVERED
-giữ evidence, bỏ thời gian normal  xóa evidence, re-arm
-                                      |
-                                      | MAP <65
-                                      v
-                                 LOW_EPISODE mới
-```
-
-Ở mọi trạng thái, gap MAP >90 giây làm mất tính liên tục của quan sát. Mẫu
-thấp sau gap bắt đầu episode mới; recovery debounce không che lấp mất dữ liệu.
-
-## 8. Các cơ chế giảm false alarm
-
-| Cơ chế | Tác dụng |
+| Tình huống | Cách xử lý hiện tại |
 |---|---|
-| Schema/value validation | Dữ liệu sai cấu trúc hoặc ngoài giới hạn kỹ thuật không tham gia rule. |
-| Deduplication | Cùng `event_id` không được cộng thêm evidence hoặc tạo alert lặp. |
-| Late-event control | Dữ liệu quá cũ đi vào DLQ, không sửa ngược cảnh báo realtime. |
-| Gap MAP ≤90 giây | Không coi một khoảng dài thiếu MAP là quan sát liên tục. |
-| Low evidence ≥300 giây | Một đợt MAP thấp ngắn không đủ điều kiện cảnh báo. |
-| Recovery confirmation 30 giây | Một vài mẫu normal ngắn không reset cả episode. |
-| One alert per episode | MAP tiếp tục thấp không phát cảnh báo lặp liên tục. |
-| Confirmed recovery re-arm | Một episode mới đủ evidence vẫn có thể phát alert mới. |
+| Sai schema/identity/unit/range, số không hữu hạn | DLQ trước MAP operator, không thêm evidence |
+| Cùng stream + `event_id` | Dedup TTL 24 giờ processing time; duplicate → DLQ |
+| Đến khác thứ tự nhưng timestamp sau Watermark | Chấp nhận, đóng góp median bucket chưa chốt |
+| Timestamp tại hoặc trước Watermark hiệu lực khi đến | Late Event → DLQ; không sửa episode đã chốt |
+| Khoảng cách MAP đúng 3 giây | Vẫn giữ continuity |
+| Gap lớn hơn 3 giây | Xóa continuity/evidence; bucket low tiếp theo mở episode mới |
 
-Accepted out-of-order MAP được xét lại theo event-time trong phần lịch sử
-chưa chốt. Ví dụ MAP thấp ở 02:24 đến trước MAP normal ở 02:18: nếu normal vẫn
-được chấp nhận, sáu giây recovery đó phải bị loại khỏi low evidence, thay vì
-bị bỏ qua do thứ tự nhận. Recovery cùng timestamp được ưu tiên hơn low MAP.
+Watermark là ranh giới của Event Time đang xử lý, không phải phép trừ đồng
+hồ thực lúc nhận với timestamp. Config tolerance 2 giây không bảo đảm mọi
+message trễ đúng 2 giây thực đều được chấp nhận; Watermark hiệu lực quyết định.
 
-## 9. Ví dụ tình huống
+Continuity kiểm tra chênh lệch đầu bucket và khoảng giữa quan sát RAW cuối
+bucket trước/đầu bucket sau. Ví dụ gap RAW 3,001 giây vẫn reset dù đầu hai
+bucket chỉ cách nhau 3 giây. Mất continuity không phải bằng chứng patient đã
+hồi phục; nó chỉ ngăn nối evidence qua đoạn thiếu dữ liệu. Sau gap, một
+episode mới vẫn có thể phát alert khi tích lại đủ evidence.
 
-| Tình huống | Kết quả |
-|---|---|
-| MAP thấp đủ 300 giây, gap hợp lệ | Một alert. |
-| MAP thấp 150 giây rồi recovery đủ 30 giây | Không alert; evidence cũ được xóa. |
-| 150 giây low, 20 giây normal, 150 giây low | Giữ episode; alert ở khoảng T+320, không phải T+300. |
-| MAP normal đủ 30 giây rồi thấp lại | Episode mới phải tự tích đủ 300 giây thấp. |
-| `64 → 66 → 64 → 66 → 63 → 67 → 64`, mỗi đoạn normal dưới 30 giây | Không reset/re-arm ở mỗi lần vượt ngưỡng; chỉ cộng các đoạn thấp. |
-| Gap MAP 91 giây | Continuity bị phá vỡ, không mang evidence thấp cũ qua gap. |
-| Duplicate / invalid / too-late MAP | Không thêm low evidence hoặc recovery evidence; theo chính sách DLQ hiện có. |
+Accepted Out-of-order normal có thể làm median bucket chưa chốt trở thành
+normal, giảm low evidence hoặc thêm một positive khi chốt theo thứ tự Event
+Time. Nó không chỉnh lại bucket đã chốt. Too-late recovery không thu hồi
+alert đã gửi; không có retraction hay luồng correction alert.
 
-Sau một alert, transient recovery vẫn thuộc episode đó và không cho phép
-alert thứ hai. Trong chuỗi quan sát không bị gap, recovery được xác nhận mới
-kết thúc episode đó; episode mới đủ evidence được phép phát alert tiếp theo.
-Gap >90 giây là mất continuity quan sát, không phải bằng chứng patient recovery.
+RAW duplicate/late dùng `error_code=PROCESSING_ERROR`, `retryable=false`;
+`error_message` bắt đầu bằng `DUPLICATE_EVENT:` hoặc `LATE_EVENT:`. Chi tiết
+payload/header ở [Kafka contract](KAFKA_MESSAGE_FORMATS.md).
 
-## 10. Giới hạn của rule hiện tại
+## Độ trễ xác nhận và độ trễ vận chuyển
 
-Chỉ MAP được chấp nhận điều khiển low/recovery state. HR, RR, SpO2, SBP, DBP
-hoặc Lactate bình thường không reset hay xác nhận recovery cho rule này.
-Hệ thống chưa kết hợp nhiều tín hiệu thành một sepsis score.
+Quyết định MAP chờ bucket finality. Bucket 1 giây và tolerance 2 giây thường
+cần khoảng **3 giây Event Time từ đầu bucket** khi stream tiến đều, cộng độ
+trễ xử lý/Watermark propagation. Đây không phải cam kết trần 3 giây thực;
+khi input dừng hoặc hệ thống backlog, finality có thể chậm hơn.
 
-Alert đã phát không bị thu hồi khi dữ liệu lịch sử đến sau. Một event quá
-watermark đi vào `icu.v2.deadletter` và không sửa ngược alert đã lưu. Với event
-out-of-order còn được chấp nhận, trạng thái hiện tại được xét lại nhưng alert
-đã gửi vẫn bất biến. Đây là lựa chọn realtime có giới hạn freshness, không
-phải tái dựng lâm sàng hoàn hảo từ dữ liệu đến trễ tùy ý.
+Sau đó alert đi Flink → Kafka → Gateway → WebSocket, độc lập DB. FastVerify
+đo mốc thực `produced_at` của alert (Gateway thêm alias `alert_emitted_at`),
+`gateway_received_at` và `websocket_received_at`; ngưỡng transport check là
+dưới 2 giây. Phép đo này **không bao gồm** 30 giây evidence và thời gian chốt
+bucket, không được dùng để khẳng định toàn bộ thời gian phát hiện dưới 2 giây.
 
-## 11. Luồng kỹ thuật
+## Các tình huống để đọc rule
 
-```text
-cleaned MAP
-→ Flink managed state theo stay_id
-→ episode + low evidence + recovery debounce
-→ xác nhận alert từ mẫu MAP thấp
-→ icu.v2.alerts
-   ├→ Realtime Gateway → WebSocket
-   └→ Storage Writer → alerts
-```
+Các mốc là Event Time của bucket; kết quả xuất hiện sau finality.
 
-Candidate chỉ nằm trong processing state, không tạo Kafka topic hay bảng DB
-riêng. Nhánh alert không chờ watermark thêm 30 hoặc 90 giây sau khi đã đủ
-low evidence; mục tiêu Flink → WebSocket vẫn dưới một giây, giới hạn chấp nhận
-dưới hai giây. FastVerify dùng event-time tăng tốc, nên recovery 30 giây không
-buộc phải chờ 30 giây thực.
+| Ca | Timeline | Kết quả |
+|---|---|---|
+| A. Đủ 30 giây low | MAP 62 mỗi giây T+0…30 | T+29 chưa alert; T+30 một alert |
+| B. Low ngắn | Low T+0…9, normal T+10…14 | 5 positive xác nhận recovery, không alert |
+| C. Bốn normal | Low T+0…9, normal T+10…13, low lại T+14 | Chưa recovery; episode cũ tiếp tục |
+| D. Năm normal | Low T+0…9, normal T+10…14 | Chốt T+14 xóa evidence và re-arm |
+| E. Dao động ngưỡng | Median lần lượt 64,66,64,66,63,67,64 mỗi giây | Mỗi bucket normal thêm positive; chưa đủ 5 ở đoạn này, chỉ khoảng low được cộng |
+| F. Duplicate/invalid/too-late | Lặp normal cùng event_id, MAP −5 hoặc normal trước Watermark | Bị loại, không thêm positive/low evidence |
+| G. Episode thứ hai | Low T+0…30; normal T+31…35; low T+36…66 | Hai alert T+30/T+66, hai `alert_id` khác nhau |
+| H. Normal so với HF | 1/100/200 MAP normal trong cùng một bucket | Đều tối đa 1 positive; 5 bucket qualified mới có thể recovery |
 
-Xem [KAFKA_FLINK_FLOW.md](../KAFKA_FLINK_FLOW.md) cho toàn bộ pipeline và
-[DATABASE_DESIGN.md](DATABASE_DESIGN.md) cho cách lưu final alert.
+Trong simulator mặc định, P02 low từ T+12 nên đủ evidence T+42. P03 mỗi chu
+kỳ 60 giây low ở 0…14 và 18…28; ba normal đầu chưa recovery, nhưng phần
+normal từ 29 trở đi xác nhận recovery trước khi low evidence đạt 30 giây.
+
+## Giảm false alarm và vòng đời status
+
+Validation, dedup, Late Event filtering, gap continuity, 30 giây low evidence,
+recovery 5/10s và một alert/episode là các lớp lọc đã triển khai. Chúng giảm
+alert do dữ liệu lỗi, thiếu liên tục hoặc một lần vượt ngưỡng ngắn; không
+bảo đảm loại bỏ mọi false alarm ngoài thực tế.
+
+**Prevented warning**: một dip ngắn/chất lượng thấp chưa bao giờ thành alert;
+không có alert row để gán status. **`FALSE_ALARM` status**: alert đã tồn tại,
+sau đó được phân loại bằng `SEPSIS_ALERT_STATUS_CHANGED`. `ACKNOWLEDGED` là
+trạng thái đã ghi nhận, không phải confirmed recovery về sinh lý.
+
+Recovery chỉ reset processing episode, không tự đổi `ACTIVE` sang status
+khác, xóa hàng DB hay phát event resolved. Contract hiện có đúng `ACTIVE`,
+`ACKNOWLEDGED`, `FALSE_ALARM`. Gateway/Writer nhận status event hợp lệ; chưa
+có UI/REST endpoint để người dùng thao tác status. Không tìm thấy alert khi
+update thì DLQ `ALERT_NOT_FOUND`, không insert thêm hàng.
+
+`QSOFA_HIGH_RISK` và `SENSOR_DISCONNECTED` là enum được contract/schema hỗ
+trợ, **chưa phải rule đang chạy**. Không có GCS để tính qSOFA; không suy
+luận sepsis hay lỗi cảm biến từ cross-signal rule chưa triển khai. Lab chưa
+được persist/chiếu vào UI hoặc tích hợp BR-6.
+
+Xem [pipeline](../KAFKA_FLINK_FLOW.md), [message contract](KAFKA_MESSAGE_FORMATS.md)
+và [bảng alert/Idempotency](DATABASE_DESIGN.md) để đối chiếu đường đi và dữ liệu lưu.

@@ -46,76 +46,64 @@ CREATE TABLE IF NOT EXISTS d_labitems (
     category TEXT
 );
 
+-- Source placeholders: deidentified MIMIC clocks, no streaming writes.
 CREATE TABLE IF NOT EXISTS chartevents (
-    event_time TIMESTAMPTZ NOT NULL,
-    event_id TEXT NOT NULL,
-    schema_version TEXT NOT NULL CHECK (schema_version = '2.0'),
     subject_id BIGINT NOT NULL REFERENCES patients(subject_id),
     hadm_id BIGINT NOT NULL REFERENCES admissions(hadm_id),
     stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
-    bed_id TEXT NOT NULL,
+    charttime TIMESTAMP NOT NULL,
     itemid INTEGER NOT NULL REFERENCES d_items(itemid),
-    signal_name TEXT NOT NULL,
-    value TEXT,
-    valuenum DOUBLE PRECISION NOT NULL,
-    valueuom TEXT,
-    quality_status TEXT NOT NULL CHECK (quality_status = 'VALID'),
-    ordering_status TEXT NOT NULL,
-    processed_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (event_time, event_id)
+    value TEXT, valuenum DOUBLE PRECISION, valueuom TEXT
 );
 CREATE TABLE IF NOT EXISTS labevents (
-    event_time TIMESTAMPTZ NOT NULL,
-    event_id TEXT NOT NULL,
-    schema_version TEXT NOT NULL CHECK (schema_version = '2.0'),
     subject_id BIGINT NOT NULL REFERENCES patients(subject_id),
-    hadm_id BIGINT NOT NULL REFERENCES admissions(hadm_id),
-    mapped_stay_id BIGINT REFERENCES icustays(stay_id),
-    bed_id TEXT,
+    hadm_id BIGINT REFERENCES admissions(hadm_id),
+    charttime TIMESTAMP NOT NULL,
     itemid INTEGER NOT NULL REFERENCES d_labitems(itemid),
-    lab_name TEXT NOT NULL,
-    value TEXT,
-    valuenum DOUBLE PRECISION,
-    valueuom TEXT,
-    quality_status TEXT NOT NULL CHECK (quality_status = 'VALID'),
-    ordering_status TEXT,
-    processed_at TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (event_time, event_id)
+    value TEXT, valuenum DOUBLE PRECISION, valueuom TEXT, flags TEXT
 );
-CREATE TABLE IF NOT EXISTS vitals_15m (
+CREATE TABLE IF NOT EXISTS patient_telemetry_stream (
+    sample_time TIMESTAMPTZ NOT NULL,
+    stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
+    heart_rate DOUBLE PRECISION CHECK (heart_rate IS NULL OR heart_rate BETWEEN 0 AND 350),
+    map DOUBLE PRECISION CHECK (map IS NULL OR map BETWEEN 0 AND 300),
+    sbp DOUBLE PRECISION CHECK (sbp IS NULL OR sbp BETWEEN 0 AND 350),
+    spo2 DOUBLE PRECISION CHECK (spo2 IS NULL OR spo2 BETWEEN 0 AND 100),
+    PRIMARY KEY (sample_time, stay_id)
+);
+CREATE TABLE IF NOT EXISTS vitals_sliding_window_5m (
     window_end TIMESTAMPTZ NOT NULL,
-    aggregate_id TEXT NOT NULL,
-    schema_version TEXT NOT NULL CHECK (schema_version = '2.0'),
-    window_start TIMESTAMPTZ NOT NULL,
-    window_minutes SMALLINT NOT NULL CHECK (window_minutes = 15),
-    subject_id BIGINT NOT NULL REFERENCES patients(subject_id),
-    hadm_id BIGINT NOT NULL REFERENCES admissions(hadm_id),
     stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
-    bed_id TEXT NOT NULL,
-    signal_name TEXT NOT NULL,
-    count BIGINT NOT NULL CHECK (count > 0),
-    mean DOUBLE PRECISION,
-    min DOUBLE PRECISION,
-    max DOUBLE PRECISION,
-    variance DOUBLE PRECISION,
-    emitted_at TIMESTAMPTZ,
-    PRIMARY KEY (window_end, aggregate_id)
+    avg_heart_rate DOUBLE PRECISION, avg_map DOUBLE PRECISION,
+    avg_sbp DOUBLE PRECISION, avg_spo2 DOUBLE PRECISION,
+    PRIMARY KEY (window_end, stay_id)
 );
-CREATE TABLE IF NOT EXISTS alerts (
-    trigger_time TIMESTAMPTZ NOT NULL,
-    alert_id TEXT NOT NULL,
-    schema_version TEXT NOT NULL CHECK (schema_version = '2.0'),
-    subject_id BIGINT NOT NULL REFERENCES patients(subject_id),
-    hadm_id BIGINT NOT NULL REFERENCES admissions(hadm_id),
+CREATE TABLE IF NOT EXISTS sepsis_alert_events (
+    alert_time TIMESTAMPTZ NOT NULL,
+    alert_id UUID NOT NULL,
     stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
-    bed_id TEXT NOT NULL,
-    alert_type TEXT NOT NULL CHECK (alert_type = 'SUSTAINED_HYPOTENSION'),
-    severity TEXT NOT NULL,
-    signal_name TEXT NOT NULL CHECK (signal_name = 'MAP'),
-    trigger_value DOUBLE PRECISION NOT NULL,
-    threshold_value DOUBLE PRECISION NOT NULL,
-    episode_start TIMESTAMPTZ NOT NULL,
-    status TEXT NOT NULL,
-    alert_emitted_at TIMESTAMPTZ,
-    PRIMARY KEY (trigger_time, alert_id)
+    alert_type TEXT NOT NULL CHECK (alert_type IN ('HYPOTENSION_SUSTAINED','QSOFA_HIGH_RISK','SENSOR_DISCONNECTED')),
+    severity TEXT NOT NULL CHECK (severity IN ('WARNING','CRITICAL')),
+    trigger_value DOUBLE PRECISION, trigger_message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','ACKNOWLEDGED','FALSE_ALARM')),
+    PRIMARY KEY (alert_time, alert_id)
 );
+-- Contract specifies metadata only; no waveform producer or writer.
+CREATE TABLE IF NOT EXISTS waveform_segments (
+    segment_start TIMESTAMPTZ NOT NULL,
+    segment_id UUID NOT NULL,
+    stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
+    PRIMARY KEY (segment_start, segment_id)
+);
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS deathtime TIMESTAMP;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS admit_provider_id TEXT;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS insurance TEXT;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS marital_status TEXT;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS race TEXT;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS edregtime TIMESTAMP;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS edouttime TIMESTAMP;
+ALTER TABLE admissions ADD COLUMN IF NOT EXISTS hospital_expire_flag SMALLINT CHECK (hospital_expire_flag IN (0,1));
+ALTER TABLE d_items ADD COLUMN IF NOT EXISTS linksto TEXT;
+ALTER TABLE d_items ADD COLUMN IF NOT EXISTS lownormalvalue DOUBLE PRECISION;
+ALTER TABLE d_items ADD COLUMN IF NOT EXISTS highnormalvalue DOUBLE PRECISION;

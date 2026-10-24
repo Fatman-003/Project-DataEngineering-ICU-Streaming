@@ -25,6 +25,11 @@ public final class KafkaMetadataDeserializer implements KafkaRecordDeserializati
         envelope.put("topic", record.topic());
         envelope.put("partition", record.partition());
         envelope.put("offset", record.offset());
+        ObjectNode headers = envelope.putObject("headers");
+        for (org.apache.flink.kafka.shaded.org.apache.kafka.common.header.Header header : record.headers()) {
+            headers.put(header.key(), header.value() == null ? null :
+                new String(header.value(), java.nio.charset.StandardCharsets.UTF_8));
+        }
         if (record.key() == null) {
             envelope.putNull("key_base64");
         } else {

@@ -30,7 +30,7 @@ Assert-Exit 'ICU services could not start.'
 Wait-Ready { (Invoke-RestMethod 'http://localhost:8081/overview').'slots-total' -ge 1 } 120 'Flink is not ready at 8081.'
 
 $jobs = @((Invoke-RestMethod 'http://localhost:8081/jobs/overview').jobs)
-$v2 = @($jobs | Where-Object { $_.state -eq 'RUNNING' -and $_.name -eq 'ICU V2 telemetry, 15m statistics and sustained hypotension' })
+$v2 = @($jobs | Where-Object { $_.state -eq 'RUNNING' -and $_.name -eq 'ICU business telemetry, 5m windows and 30s hypotension' })
 foreach ($job in @($jobs | Where-Object { $_.state -in @('RUNNING', 'RESTARTING') -and $_.name -like 'ICU*' -and $_.name -match 'TICKET-00[5678]' })) {
     docker compose -f $ComposeFile exec -T jobmanager /opt/flink/bin/flink cancel $job.jid
     Assert-Exit 'Could not stop the previous ICU job.'
@@ -41,7 +41,7 @@ if ($v2.Count -eq 0) {
     Assert-Exit 'V2 Flink submission failed.'
 }
 Wait-Ready {
-    $running = @((Invoke-RestMethod 'http://localhost:8081/jobs/overview').jobs | Where-Object { $_.state -eq 'RUNNING' -and $_.name -eq 'ICU V2 telemetry, 15m statistics and sustained hypotension' })
+    $running = @((Invoke-RestMethod 'http://localhost:8081/jobs/overview').jobs | Where-Object { $_.state -eq 'RUNNING' -and $_.name -eq 'ICU business telemetry, 5m windows and 30s hypotension' })
     if ($running.Count -ne 1) { return $false }
     $details = Invoke-RestMethod "http://localhost:8081/jobs/$($running[0].jid)"
     $checks = Invoke-RestMethod "http://localhost:8081/jobs/$($running[0].jid)/checkpoints"

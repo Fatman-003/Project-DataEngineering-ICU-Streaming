@@ -53,7 +53,7 @@ class FakeConsumer:
 
 class FakeMessage:
     def topic(self):
-        return "icu.v2.chartevents.cleaned"
+        return "icu.telemetry"
 
     def key(self):
         return b"35727289"
@@ -68,7 +68,7 @@ class StorageTests(unittest.TestCase):
         self.assertIn('127.0.0.1:5432:5432', compose)
         self.assertIn("icu-timescale-data", compose)
         self.assertIn("${POSTGRES_PASSWORD:?", compose)
-        self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS"), 9)
+        self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS"), 11)
         self.assertEqual(hypertables.count("SELECT create_hypertable"), 4)
         self.assertEqual(len(REFERENCE_TABLES), 5)
         self.assertEqual(len(RUNTIME_TABLES), 4)
@@ -82,15 +82,15 @@ class StorageTests(unittest.TestCase):
                          {220045, 220052, 220050, 220051, 220277, 220210})
         self.assertEqual({int(r["itemid"]) for r in seed["d_labitems"]}, {50813})
         self.assertEqual(GROUP_ID, "icu-timescale-writer-v2")
-        self.assertEqual(set(TOPIC_TABLE.values()), set(RUNTIME_TABLES))
-        self.assertEqual(len(TOPIC_TABLE), 4)
+        self.assertEqual(set(TOPIC_TABLE.values()), set(RUNTIME_TABLES)-{"waveform_segments"})
+        self.assertEqual(len(TOPIC_TABLE), 3)
 
     def test_db_transaction_commits_before_kafka_offset(self):
         connection = FakeConnection()
         consumer = FakeConsumer(connection.calls)
         event = {"event_id": "x"}
         with patch("writer.persist_one", side_effect=lambda *args: persist_one(
-                connection, "icu.v2.chartevents.cleaned", self._valid_event(), b"35727289")):
+                connection, "icu.telemetry", self._valid_event(), b"35727289")):
             store_and_commit(consumer, connection, FakeMessage(), event)
         self.assertEqual(connection.calls, ["begin", "insert", "db_commit", "offset_commit"])
 
@@ -112,14 +112,8 @@ class StorageTests(unittest.TestCase):
 
     @staticmethod
     def _valid_event():
-        patient = REGISTRY["35727289"]
-        return {"event_time": "2026-10-17T00:00:00Z", "event_id": "x", "schema_version": "2.0",
-                "subject_id": patient["subject_id"], "hadm_id": patient["hadm_id"],
-                "stay_id": patient["stay_id"], "bed_id": patient["bed_id"],
-                "itemid": 220045, "signal_name": "HR", "value": "80", "valuenum": 80,
-                "valueuom": "bpm", "quality_status": "VALID", "ordering_status": "IN_ORDER",
-                "processed_at": "2026-10-17T00:00:01Z"}
+        from business_contract import metadata
+        return dict(metadata("TELEMETRY_SAMPLE", "test"), sample_time="2026-10-17T00:00:00Z", stay_id=35727289,
+                    heart_rate=80, map=62, sbp=120, spo2=98)
 
-
-if __name__ == "__main__":
-    unittest.main()
+if __name__ == "__main__": unittest.main()
