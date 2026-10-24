@@ -10,8 +10,8 @@ schema lưu trữ ở [DATABASE_DESIGN.md](DATABASE_DESIGN.md).
 
 | Topic | Kafka key UTF-8 | Schema Version / event type | Đích |
 |---|---|---|---|
-| `icu.v2.chartevents` | `stay_id` dạng chuỗi | `2.0`, không có `event_type` | Flink RAW input |
-| `icu.v2.labevents` | `mapped_stay_id` dạng chuỗi | `2.0`, không có `event_type` | Flink RAW input |
+| `icu.v2.chartevents` | `stay_id` dạng chuỗi | `3.0`, không có `event_type` | Flink RAW input |
+| `icu.v2.labevents` | `mapped_stay_id` dạng chuỗi | `3.0`, không có `event_type` | Flink RAW input |
 | `icu.telemetry` | `stay_id` dạng chuỗi | `1.0` / `TELEMETRY_SAMPLE` | Gateway; `patient_telemetry_stream` |
 | `icu.vitals.5m` | `stay_id` dạng chuỗi | `1.0` / `VITALS_WINDOW_5M` | Gateway; `vitals_sliding_window_5m` |
 | `icu.alerts` | `stay_id` dạng chuỗi | `1.0` / hai event type bên dưới | Gateway; `sepsis_alert_events` |
@@ -22,7 +22,7 @@ Bootstrap tạo mỗi topic với **1 partition, replication factor 1**. DLQ đ�
 7/14/30 ngày riêng trong code. Kafka giữ thứ tự record trong một partition,
 không sắp xếp lại theo Event Time. Các topic khác nhau không có thứ tự chung.
 
-## RAW input được giữ nguyên
+## RAW input và integer bed identity
 
 Simulator phát một signal trên mỗi RAW message. `icu.v2.chartevents` có đúng
 các field: `schema_version`, `event_id`, `subject_id`, `hadm_id`, `stay_id`,
@@ -31,7 +31,7 @@ các field: `schema_version`, `event_id`, `subject_id`, `hadm_id`, `stay_id`,
 `lab_name`; các field còn lại giữ nguyên. Không thêm metadata business/header
 bắt buộc của mục tiếp theo vào RAW.
 
-Schema RAW yêu cầu chính xác `2.0` và đúng tập field, không nhận field thừa.
+Schema RAW yêu cầu chính xác `3.0` và đúng tập field, không nhận field thừa.
 ID số là positive integer, bộ identity phải khớp P01–P04; `event_id` là chuỗi
 không rỗng, không phải UUID bắt buộc. `event_time` phải có timezone, được
 chuẩn hóa UTC khi xử lý. Giá trị/unit/itemid theo từ điển
@@ -39,6 +39,37 @@ chuẩn hóa UTC khi xử lý. Giá trị/unit/itemid theo từ điển
 và lab Lactate vẫn giữ nguyên. JSON object/UTF-8/value/schema không hợp lệ,
 duplicate và quá muộn đi vào DLQ; dữ liệu bất thường nhưng hợp lệ như MAP 62
 vẫn tham gia xử lý. Lab hợp lệ được log, chưa có business lab projection.
+
+`bed_id` là JSON **integer dương**, không nhận string, float, boolean hoặc
+null; phải khớp patient/stay trong registry. P01/stay 37323533 dùng bed 1,
+P02/35727289 dùng bed 2, P03/39864867 dùng bed 3, P04/32359580 dùng bed 4.
+`demo_id` nằm trong cấu hình ứng dụng, không thêm field này vào RAW hoặc DB.
+
+Đổi bed string của RAW `2.0` sang integer là breaking change nên tăng major
+thành `3.0` cho **cả chartevents và labevents**. Các field/tần suất còn lại
+giữ nguyên; tên topic vẫn có `v2`, không phải số version của body. Producer và
+Flink phải cùng phiên bản; RAW `2.0` bị DLQ `SCHEMA_VERSION_UNSUPPORTED`, không
+được tự chuyển string thành số. Launcher reset các topic ứng dụng và khởi tạo
+Flink job/state mới trước demo để không trộn RAW cũ. Business không có bed_id
+trong contract nên vẫn Schema Version `1.0`.
+
+Ví dụ RAW đầy đủ cho P01 (Kafka key `37323533`):
+
+```json
+{
+  "schema_version": "3.0",
+  "event_id": "evt-37323533-2026-10-16T20:00:00Z-MAP",
+  "subject_id": 10039708,
+  "hadm_id": 24928679,
+  "stay_id": 37323533,
+  "bed_id": 1,
+  "itemid": 220052,
+  "signal_name": "MAP",
+  "event_time": "2026-10-16T20:00:00Z",
+  "valuenum": 62,
+  "valueuom": "mmHg"
+}
+```
 
 ## Quy ước chung cho business và DLQ
 
@@ -292,7 +323,7 @@ không parse được, không phải mọi key/header.
 | Mã lỗi hiện được dùng | Ý nghĩa |
 |---|---|
 | `JSON_PARSE_ERROR`, `INVALID_UTF8` | Lỗi deserialization |
-| `SCHEMA_VERSION_UNSUPPORTED` | RAW khác 2.0 hoặc business major không hỗ trợ |
+| `SCHEMA_VERSION_UNSUPPORTED` | RAW khác 3.0 hoặc business major không hỗ trợ |
 | `MISSING_REQUIRED_FIELD`, `INVALID_FIELD_TYPE`, `INVALID_ENUM_VALUE` | Sai field/metadata/header/enum |
 | `INVALID_TIMESTAMP`, `VALUE_OUT_OF_RANGE`, `EVENT_TYPE_MISMATCH` | Sai timestamp/range/event type |
 | `IDEMPOTENCY_CONFLICT` | Component thay đổi sau khi wide đã phát |

@@ -67,8 +67,6 @@ def build(source_root):
                 or admissions[patient["hadm_id"]]["subject_id"] != str(patient["subject_id"])):
             raise ValueError("ICU stay/admission/source identity conflict")
         stay["bed_id"] = patient["bed_id"]
-    for patient in result["patients"]:
-        patient["demo_id"] = identity[int(patient["subject_id"])]["demo_id"]
     return result
 
 

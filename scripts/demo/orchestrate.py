@@ -423,9 +423,10 @@ class Orchestrator:
                                   "icu-timescaledb", check=False)
             return result.returncode == 0 and result.stdout.strip() == "healthy"
         self.wait(db_healthy, 120, "TimescaleDB did not pass pg_isready healthcheck")
-        from db_admin import initialize, connect, legacy_sources, backup_database, database_snapshot
+        from db_admin import (initialize, connect, legacy_sources, reference_migration_needed,
+                              backup_database, database_snapshot)
         with connect() as connection:
-            breaking = legacy_sources(connection)
+            breaking = legacy_sources(connection) or reference_migration_needed(connection)
             if breaking:
                 self.report["database_before_migration"] = database_snapshot(connection)
         backup = backup_database(self.docker) if breaking else None

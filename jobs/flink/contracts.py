@@ -1,8 +1,9 @@
-"""Two unchanged RAW inputs and four UI-facing outputs."""
+"""Stable topic names; RAW 3.0 uses integer beds, business remains 1.x."""
 import json
 from business_contract import BUSINESS_TOPICS, DLQ_TOPIC, finite_json_float
 
 TOPICS = {"chartevents": "icu.v2.chartevents", "labevents": "icu.v2.labevents"}
+RAW_SCHEMA_VERSION = "3.0"
 CORE_TOPICS = (*TOPICS.values(), *BUSINESS_TOPICS.values(), DLQ_TOPIC)
 CHART_FIELDS = frozenset((
     "schema_version", "event_id", "subject_id", "hadm_id", "stay_id", "bed_id",

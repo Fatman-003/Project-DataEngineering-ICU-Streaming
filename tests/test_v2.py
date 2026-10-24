@@ -70,7 +70,7 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(validate_source_identities(), PATIENTS)
 
     def test_frozen_p04(self):
-        self.assertEqual(PATIENTS[3], dict(demo_id="P04", bed_id="BED-04", subject_id=10007818,
+        self.assertEqual(PATIENTS[3], dict(demo_id="P04", bed_id=4, subject_id=10007818,
                                           hadm_id=22987108, stay_id=32359580))
 
     def test_p04_has_all_six_vital_items(self):

@@ -1,8 +1,8 @@
 {
   "patients": [
-    {"demo_id": "P01", "bed_id": "BED-01", "subject_id": 10039708, "hadm_id": 24928679, "stay_id": 37323533},
-    {"demo_id": "P02", "bed_id": "BED-02", "subject_id": 10019003, "hadm_id": 21457723, "stay_id": 35727289},
-    {"demo_id": "P03", "bed_id": "BED-03", "subject_id": 10014354, "hadm_id": 29600294, "stay_id": 39864867},
-    {"demo_id": "P04", "bed_id": "BED-04", "subject_id": 10007818, "hadm_id": 22987108, "stay_id": 32359580}
+    {"demo_id": "P01", "bed_id": 1, "subject_id": 10039708, "hadm_id": 24928679, "stay_id": 37323533},
+    {"demo_id": "P02", "bed_id": 2, "subject_id": 10019003, "hadm_id": 21457723, "stay_id": 35727289},
+    {"demo_id": "P03", "bed_id": 3, "subject_id": 10014354, "hadm_id": 29600294, "stay_id": 39864867},
+    {"demo_id": "P04", "bed_id": 4, "subject_id": 10007818, "hadm_id": 22987108, "stay_id": 32359580}
   ]
 }

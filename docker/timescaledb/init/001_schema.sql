@@ -4,7 +4,6 @@ CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 CREATE TABLE IF NOT EXISTS patients (
     subject_id BIGINT PRIMARY KEY,
-    demo_id TEXT NOT NULL UNIQUE,
     gender TEXT,
     anchor_age INTEGER,
     anchor_year INTEGER,
@@ -24,7 +23,7 @@ CREATE TABLE IF NOT EXISTS icustays (
     stay_id BIGINT PRIMARY KEY,
     subject_id BIGINT NOT NULL REFERENCES patients(subject_id),
     hadm_id BIGINT NOT NULL REFERENCES admissions(hadm_id),
-    bed_id TEXT NOT NULL UNIQUE,
+    bed_id INTEGER NOT NULL UNIQUE,
     first_careunit TEXT,
     last_careunit TEXT,
     intime TIMESTAMP,

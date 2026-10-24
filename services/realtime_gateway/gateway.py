@@ -43,7 +43,8 @@ class GatewayState:
         if patient is None:
             raise ContractError("REFERENCE_NOT_FOUND", "Unknown fixed stay")
         common = {field: patient[field] for field in ("demo_id", "bed_id", "stay_id")}
-        payload = dict(event, **{k: v for k, v in common.items() if k not in event})
+        # Application identifiers come from the registry, not optional message extras.
+        payload = dict(event, **common)
         if topic == BUSINESS_TOPICS["telemetry"]:
             clock, target = "sample_time", patient["vitals"]
             previous = target.get("HR")

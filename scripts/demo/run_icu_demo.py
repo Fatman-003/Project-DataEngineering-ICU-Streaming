@@ -8,7 +8,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT / "jobs/flink"))
-from contracts import SIGNALS, TOPICS, stay_key
+from contracts import SIGNALS, TOPICS, stay_key, RAW_SCHEMA_VERSION
 from dlq import encode
 from registry import load_patients
 from validation import parse_timestamp
@@ -34,7 +34,7 @@ def chart_event(patient, signal, second, start, suffix=""):
                             or (patient_number == 3 and (phase % 60 < 15 or 18 <= phase % 60 < 29))):
         values[signal] = 61 + drift % 3
     event_time = (start + timedelta(seconds=second)).isoformat().replace("+00:00", "Z")
-    return {"schema_version": "2.0", "event_id": f"evt-{patient['stay_id']}-{event_time}-{signal}{suffix}",
+    return {"schema_version": RAW_SCHEMA_VERSION, "event_id": f"evt-{patient['stay_id']}-{event_time}-{signal}{suffix}",
             **{field: patient[field] for field in ("subject_id", "hadm_id", "stay_id", "bed_id")},
             "itemid": itemid, "signal_name": signal, "event_time": event_time,
             "valuenum": values[signal], "valueuom": unit}

@@ -1,7 +1,7 @@
-"""V2 schema, real registry identity, dictionary and numeric validity checks."""
+"""RAW schema, real registry identity, dictionary and numeric validity checks."""
 import math
 from datetime import datetime, timezone
-from contracts import CHART_FIELDS, LAB_FIELDS, SIGNALS, LABS
+from contracts import CHART_FIELDS, LAB_FIELDS, SIGNALS, LABS, RAW_SCHEMA_VERSION
 from registry import load_patients
 PATIENTS = load_patients()
 
@@ -34,9 +34,9 @@ def validate_event(event, stream):
         fail("Unknown stream or non-object payload")
     if set(event) != expected:
         fail(f"Contract fields differ: missing={sorted(expected - set(event))}, extra={sorted(set(event) - expected)}")
-    if event["schema_version"] != "2.0":
-        fail("schema_version must equal 2.0")
-    for field in ("event_id", "bed_id", "valueuom"):
+    if event["schema_version"] != RAW_SCHEMA_VERSION:
+        fail("schema_version must equal " + RAW_SCHEMA_VERSION)
+    for field in ("event_id", "valueuom"):
         if not isinstance(event[field], str) or not event[field].strip():
             fail(f"{field} must be nonempty text")
         try:
@@ -44,7 +44,7 @@ def validate_event(event, stream):
         except UnicodeError:
             fail(f"{field} contains invalid Unicode")
     stay_field = "stay_id" if stream == "chartevents" else "mapped_stay_id"
-    for field in ("subject_id", "hadm_id", stay_field, "itemid"):
+    for field in ("subject_id", "hadm_id", stay_field, "bed_id", "itemid"):
         if type(event[field]) is not int or event[field] <= 0:
             fail(f"{field} must be a positive integer")
     if not any(all(event[field] == patient[field] for field in ("subject_id", "hadm_id", "bed_id"))

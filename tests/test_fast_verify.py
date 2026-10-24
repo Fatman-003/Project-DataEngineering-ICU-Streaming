@@ -110,8 +110,8 @@ class DocumentationBoundaryTests(unittest.TestCase):
         self.assertIn("TimescaleDB", text)
         self.assertIn("not original MIMIC", text)
 
-    def test_proposals_define_new_outputs_and_legacy_docs_are_deferred(self):
-        proposal=(PROJECT/'kafka-message-formats.md').read_text(encoding='utf-8')
+    def test_canonical_contract_defines_business_outputs(self):
+        proposal=(PROJECT/'docs/KAFKA_MESSAGE_FORMATS.md').read_text(encoding='utf-8')
         for topic in ('icu.telemetry','icu.vitals.5m','icu.alerts','icu.deadletter'):
             self.assertIn(topic,proposal)
         self.assertTrue((PROJECT/'KAFKA_FLINK_FLOW.md').is_file())
