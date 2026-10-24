@@ -1,0 +1,118 @@
+name: icu-apps
+
+services:
+  icu-apps-db:
+    image: timescale/timescaledb:2.30.2-pg17
+    container_name: icu-apps-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - icu-apps-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - icu-app
+      - icu-streaming
+
+  icu-server:
+    build:
+      context: ../../server
+      dockerfile: Dockerfile
+    image: icu-server:local
+    container_name: icu-server
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      SPRING_DATASOURCE_URL: jdbc:postgresql://icu-apps-db:5432/${POSTGRES_DB:-icu}
+      TZ: UTC
+    env_file:
+      - ../../.env
+    depends_on:
+      icu-apps-db:
+        condition: service_healthy
+    networks:
+      - icu-app
+      - icu-streaming
+
+  icu-web:
+    build:
+      context: ../../client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_WS_URL: ""
+    image: icu-web:local
+    container_name: icu-web
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "3000:8080"
+    depends_on:
+      - icu-server
+    networks:
+      - icu-app
+
+  icu-storage-writer:
+    image: icu-storage-writer:v1
+    build:
+      context: ../..
+      dockerfile: services/storage_writer/Dockerfile
+    container_name: icu-storage-writer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TIMESCALE_HOST: icu-apps-db
+      TIMESCALE_PORT: 5432
+    depends_on:
+      icu-apps-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/icu-writer-ready && kill -0 1 && python -c 'import psycopg; from services.storage_writer.config import db_params; psycopg.connect(**db_params()).close()'"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks:
+      - icu-app
+      - icu-streaming
+
+  icu-kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: icu-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ICU-LOCAL
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: icu-kafka:9094
+      KAFKA_CLUSTERS_0_READONLY: "true"
+    networks:
+      - icu-streaming
+
+networks:
+  icu-app:
+    driver: bridge
+  icu-streaming:
+    external: true
+    name: icu-streaming
+
+volumes:
+  icu-apps-db-data:
+    name: icu-apps-db-data
