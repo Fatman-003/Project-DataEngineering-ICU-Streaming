@@ -1,6 +1,7 @@
 """Shared proposal DLQ envelope, including unchanged RAW sources."""
 import base64
 from business_contract import encode, deadletter
+from contracts import RAW_SCHEMA_VERSION
 
 ERROR_TYPES = frozenset({"PARSE_ERROR", "SCHEMA_ERROR", "VALUE_ERROR", "DUPLICATE_EVENT", "LATE_EVENT",
                          "IDEMPOTENCY_CONFLICT"})
@@ -24,7 +25,7 @@ def rejection(source, stream, error_type, reason, event=None, failed_at=None):
             raw.decode("utf-8", errors="strict")
         except UnicodeError:
             code = "INVALID_UTF8"
-    if event is not None and event.get("schema_version") != "2.0":
+    if event is not None and event.get("schema_version") != RAW_SCHEMA_VERSION:
         code = "SCHEMA_VERSION_UNSUPPORTED"
     return deadletter(source, code, error_type + ": " + reason, stage=stage)
 

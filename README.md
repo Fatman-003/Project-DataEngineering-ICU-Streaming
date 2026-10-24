@@ -9,6 +9,10 @@ bình cửa sổ **5 phút** và cảnh báo MAP thấp đủ **30 giây low evi
 **không phải quan sát gốc của MIMIC (not original MIMIC observations)**.
 Repo có sẵn cấu hình và seed; chạy demo không cần tải MIMIC gốc.
 
+P01–P04 là `demo_id` trong cấu hình ứng dụng, dùng để tra patient trên Gateway;
+DB `patients` chỉ dùng `subject_id`, không có cột `demo_id`. `bed_id` là số
+nguyên cố định: P01=1, P02=2, P03=3, P04=4, thống nhất trong DB, RAW và API.
+
 ## Công nghệ và image
 
 | Dịch vụ | Image gốc | Image/container của dự án |

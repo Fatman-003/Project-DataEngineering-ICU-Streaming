@@ -56,9 +56,9 @@ bên dưới là bắt buộc; các cột còn lại nullable.
 
 | Bảng | Các cột vật lý và kiểu | Khóa/ràng buộc |
 |---|---|---|
-| `patients` | `subject_id BIGINT`, `demo_id TEXT NOT NULL`, `gender TEXT`, `anchor_age INTEGER`, `anchor_year INTEGER`, `anchor_year_group TEXT`, `dod DATE` | PK `subject_id`; UNIQUE `demo_id` |
+| `patients` | `subject_id BIGINT`, `gender TEXT`, `anchor_age INTEGER`, `anchor_year INTEGER`, `anchor_year_group TEXT`, `dod DATE` | PK `subject_id`; không có cột `demo_id` |
 | `admissions` | `hadm_id BIGINT`, `subject_id BIGINT NOT NULL`, `admittime TIMESTAMP`, `dischtime TIMESTAMP`, `admission_type TEXT`, `admission_location TEXT`, `discharge_location TEXT`; các cột bổ sung bên dưới | PK `hadm_id`; FK `subject_id → patients(subject_id)` |
-| `icustays` | `stay_id BIGINT`, `subject_id BIGINT NOT NULL`, `hadm_id BIGINT NOT NULL`, `bed_id TEXT NOT NULL`, `first_careunit TEXT`, `last_careunit TEXT`, `intime TIMESTAMP`, `outtime TIMESTAMP`, `los DOUBLE PRECISION` | PK `stay_id`; FK đến `patients`, `admissions`; UNIQUE `bed_id` |
+| `icustays` | `stay_id BIGINT`, `subject_id BIGINT NOT NULL`, `hadm_id BIGINT NOT NULL`, `bed_id INTEGER NOT NULL`, `first_careunit TEXT`, `last_careunit TEXT`, `intime TIMESTAMP`, `outtime TIMESTAMP`, `los DOUBLE PRECISION` | PK `stay_id`; FK đến `patients`, `admissions`; UNIQUE `bed_id` |
 | `d_items` | `itemid INTEGER`, `label TEXT`, `abbreviation TEXT`, `category TEXT`, `unitname TEXT`, `param_type TEXT`, `linksto TEXT`, `lownormalvalue DOUBLE PRECISION`, `highnormalvalue DOUBLE PRECISION` | PK `itemid` |
 | `d_labitems` | `itemid INTEGER`, `label TEXT`, `fluid TEXT`, `category TEXT` | PK `itemid` |
 
@@ -68,10 +68,12 @@ bên dưới là bắt buộc; các cột còn lại nullable.
 `hospital_expire_flag SMALLINT CHECK (hospital_expire_flag IN (0,1))`.
 Các cột bổ sung có trong schema nhưng seed hiện không tự tạo giá trị còn thiếu.
 
-`demo_id` P01–P04 và `bed_id` **TEXT** BED-01–BED-04 là ánh xạ của dự án.
-`bed_id` không phải trường nguồn MIMIC, không dùng kiểu INTEGER từ proposal.
-Danh tính thật của patient/admission/stay được giữ trong
-[demo_patients.yaml](../config/demo_patients.yaml).
+`demo_id` P01–P04 chỉ là mã ứng dụng trong
+[demo_patients.yaml](../config/demo_patients.yaml), không được lưu vào `patients`
+hoặc chuyển sang một bảng DB khác. Registry ánh xạ demo_id → subject_id →
+hadm_id → stay_id → bed_id. Giường là **INTEGER** cố định: P01=1, P02=2, P03=3,
+P04=4; đây là ánh xạ mô phỏng, không phải trường nguồn MIMIC. API vẫn tra cứu
+bằng P01–P04 nhưng trả `bed_id` dạng số. Seed không chứa `patients.demo_id`.
 
 [Seed JSON](../config/db_reference_seed.json) nạp **4 patients / 4 admissions /
 4 icustays / 6 d_items / 1 d_labitems**. Startup upsert reference theo PK;
@@ -245,6 +247,15 @@ thay cho một lần thử restore hoàn chỉnh. Schema/drop nguồn cũ/seed/r
 trong transaction. Các bảng output cũ chỉ được retire sau FastVerify thành
 công; nếu nâng cấp máy còn schema cũ mà chưa verify, có thể còn bảng legacy.
 
+Nếu DB còn `patients.demo_id` hoặc `icustays.bed_id` kiểu TEXT, launcher cũng
+backup trước migration reference. Migration kiểm tra identity và mapping
+legacy `BED-01`→1, `BED-02`→2, `BED-03`→3, `BED-04`→4 trước khi đổi kiểu;
+giá trị/mapping lạ làm dừng rõ lỗi, không đoán hoặc cast tùy ý. Chuyển kiểu
+và bỏ `patients.demo_id` cùng UNIQUE/index của cột đó nằm trong transaction,
+không dùng CASCADE. Chạy lại trên schema integer hợp lệ không thay đổi dữ
+liệu. Migration giữ reference, business rows, FK/PK và volume; không reset
+dữ liệu chỉ để đổi hai field này. Reset demo bên dưới là bước riêng của launcher.
+
 Sau khi migration/retirement hoàn tất, target là 11 bảng/4 hypertable ở trên.
 Demo mặc định chỉ reset dữ liệu của `patient_telemetry_stream`,
 `vitals_sliding_window_5m`, `sepsis_alert_events`, `waveform_segments`; giữ
@@ -265,6 +276,14 @@ chỉ đọc dữ liệu; `SET TIME ZONE` chỉ thay cách hiển thị trong se
 
 ```sql
 SET TIME ZONE 'UTC';
+
+-- Reference identity: integer; truy vấn demo_id phải trả 0 hàng
+SELECT column_name, data_type FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'icustays' AND column_name = 'bed_id';
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = 'public' AND table_name = 'patients' AND column_name = 'demo_id';
+SELECT stay_id, subject_id, hadm_id, bed_id FROM icustays ORDER BY bed_id;
+SELECT count(*) AS total, count(DISTINCT bed_id) AS distinct_beds FROM icustays;
 
 -- 1. Reference counts: 4 / 4 / 4 / 6 / 1
 SELECT 'patients' AS table_name, count(*) FROM patients

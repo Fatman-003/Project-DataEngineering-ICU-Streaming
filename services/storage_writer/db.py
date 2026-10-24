@@ -1,14 +1,13 @@
 """Natural-key idempotency, alert identity checks, commit before Kafka offsets."""
-import json
 from pathlib import Path
 import sys
 from psycopg import sql
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "jobs/flink"))
 from business_contract import validate, ContractError, timestamp
+from registry import load_patients
 from config import TOPIC_TABLE, TIME_COLUMNS, IDENTITY_COLUMNS
 
-REGISTRY = {str(p["stay_id"]): p for p in json.loads(
-    (Path(__file__).resolve().parents[2] / "config/demo_patients.yaml").read_text(encoding="utf-8"))["patients"]}
+REGISTRY = {str(p["stay_id"]): p for p in load_patients()}
 TABLE_COLUMNS = {
     "patient_telemetry_stream": ("sample_time", "stay_id", "heart_rate", "map", "sbp", "spo2"),
     "vitals_sliding_window_5m": ("window_end", "stay_id", "avg_heart_rate", "avg_map", "avg_sbp", "avg_spo2"),

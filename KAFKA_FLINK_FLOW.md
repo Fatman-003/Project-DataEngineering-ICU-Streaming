@@ -28,13 +28,15 @@ frontend ICU hoàn chỉnh hoặc API truy vấn lịch sử từ DB.
 
 Bốn bộ định danh đóng băng trong [demo_patients.yaml](config/demo_patients.yaml)
 lấy từ MIMIC-IV Clinical Demo 2.2. Giường và số đo là mô phỏng của dự án.
+P01–P04 (`demo_id`) chỉ nằm trong registry ứng dụng, không phải cột của bảng
+`patients`. `bed_id` là JSON integer/API và `INTEGER NOT NULL UNIQUE` trong DB.
 
-| Patient / giường | `subject_id` | `hadm_id` | `stay_id` |
+| Patient / `bed_id` | `subject_id` | `hadm_id` | `stay_id` |
 |---|---|---|---|
-| P01 / BED-01 | 10039708 | 24928679 | 37323533 |
-| P02 / BED-02 | 10019003 | 21457723 | 35727289 |
-| P03 / BED-03 | 10014354 | 29600294 | 39864867 |
-| P04 / BED-04 | 10007818 | 22987108 | 32359580 |
+| P01 / 1 | 10039708 | 24928679 | 37323533 |
+| P02 / 2 | 10019003 | 21457723 | 35727289 |
+| P03 / 3 | 10014354 | 29600294 | 39864867 |
+| P04 / 4 | 10007818 | 22987108 | 32359580 |
 
 Normal phát cả HR/MAP/SBP/DBP/SpO2/RR mỗi giây cho mỗi patient: 24 RAW message/
 giây, cùng timestamp cho sáu signal trong một tick. HF100/HF200 tăng lên
@@ -51,7 +53,9 @@ giống nhau. Probe duplicate/invalid/late đi vào DLQ.
 ## Sáu topic ứng dụng
 
 Mỗi topic có **1 partition, replication factor 1** trên broker local hiện
-có. RAW giữ Schema Version `2.0`; business và DLQ phát `1.0`.
+có. RAW dùng Schema Version `3.0` với `bed_id` integer; business và DLQ giữ
+`1.0`. RAW `2.0` dùng bed string là phiên bản cũ không được validator mới nhận;
+launcher reset topic và Flink state trước khi phát RAW mới.
 
 | Topic | Kafka key UTF-8 | Nơi tạo → nơi đọc |
 |---|---|---|

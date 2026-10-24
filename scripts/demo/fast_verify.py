@@ -6,12 +6,19 @@ import json
 import math
 import time
 from aiohttp import ClientSession, WSMsgType
-from contracts import CORE_TOPICS, TOPICS, BUSINESS_TOPICS, DLQ_TOPIC, stay_key
+from contracts import CORE_TOPICS, TOPICS, BUSINESS_TOPICS, DLQ_TOPIC, stay_key, RAW_SCHEMA_VERSION
+from validation import validate_event
 from business_contract import validate, headers, header_dict, FIELDS, timestamp
 from run_icu_demo import run_demo, demo_events, PATIENTS
 from runtime_config import WindowAlertConfig, RuntimeConfig
 
 SPEED = 24
+
+
+def validate_gateway_identity(payload):
+    patient = next(p for p in PATIENTS if p["stay_id"] == payload["stay_id"])
+    assert type(payload.get("bed_id")) is int and payload["bed_id"] == patient["bed_id"], payload
+    assert payload.get("demo_id") == patient["demo_id"], payload
 
 
 def transport_timings(payload, websocket_received_at):
@@ -64,6 +71,11 @@ def validate_pipeline(records, start, ws_alerts, snapshot, message_counts):
     expected = list(demo_events(start=start))
     raw = [(topic, event) for topic in TOPICS.values() for event in records[topic]]
     assert Counter((t, e["event_id"]) for t, e in raw) == Counter((t, e["event_id"]) for t, e in expected), "RAW counts changed"
+    for topic, event in raw:
+        # Deliberate invalid SpO2 remains the one expected validation rejection.
+        if not event["event_id"].endswith("-invalid"):
+            validate_event(event, "chartevents" if topic == TOPICS["chartevents"] else "labevents")
+        assert event["schema_version"] == RAW_SCHEMA_VERSION and type(event["bed_id"]) is int
     wide = records[BUSINESS_TOPICS["telemetry"]]
     assert len(wide) == 4 * 360, f"Expected1440 wide samples, got{len(wide)}"
     assert len({(e["stay_id"], e["sample_time"]) for e in wide}) == len(wide), "Duplicate wide sample"
@@ -91,9 +103,11 @@ def validate_pipeline(records, start, ws_alerts, snapshot, message_counts):
     assert len(ws_alerts) == 1 and ws_alerts[0][0]["alert_id"] == alert["alert_id"], "WebSocket alert mismatch"
     assert set(snapshot) == {p["demo_id"] for p in PATIENTS}
     for name, patient in snapshot.items():
+        validate_gateway_identity(patient)
         assert len(patient["alerts"]) == counts[name] and patient["vitals"] and patient["summaries"]
     assert all(message_counts[k] > 0 for k in ("TELEMETRY_SAMPLE", "VITALS_WINDOW_5M", "ALERT"))
     return dict(result="PASS", logical_duration_seconds=360, speed_factor=SPEED, alert_counts=counts,
+                raw_schema_version=RAW_SCHEMA_VERSION, integer_beds=True, websocket_integer_beds=True,
                 confirmation_seconds=30, recovery_observations=5, recovery_window_seconds=10,
                 lateness_seconds=RuntimeConfig().max_out_of_orderness_seconds,
                 map_gap_seconds=WindowAlertConfig().map_max_sample_gap_seconds,
@@ -109,12 +123,15 @@ async def verify_async():
         async with session.ws_connect("http://127.0.0.1:8083/ws") as ws:
             initial = await ws.receive_json(timeout=5)
             assert initial["message_type"] == "SNAPSHOT"
+            for patient in initial["payload"].values():
+                validate_gateway_identity(patient)
             assert all(not p["vitals"] and not p["summaries"] and not p["alerts"] for p in initial["payload"].values())
             async def receive():
                 async for message in ws:
                     received_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                     if message.type == WSMsgType.TEXT:
                         update = json.loads(message.data)
+                        validate_gateway_identity(update["payload"])
                         message_counts[update["message_type"]] += 1
                         if update["message_type"] == "ALERT":
                             ws_alerts.append((update["payload"], received_at))
@@ -125,6 +142,8 @@ async def verify_async():
                 producer_seconds = time.monotonic() - producer_began
                 deadline = time.monotonic() + 90
                 while True:
+                    if collector.done():
+                        collector.result()  # Surface failed WebSocket identity checks.
                     records = await asyncio.to_thread(read_pipeline)
                     async with session.get("http://127.0.0.1:8083/api/snapshot") as response:
                         snapshot = await response.json()

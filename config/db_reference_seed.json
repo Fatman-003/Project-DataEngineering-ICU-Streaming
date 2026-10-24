@@ -9,8 +9,7 @@
       "anchor_age": "69",
       "anchor_year": "2146",
       "anchor_year_group": "2014 - 2016",
-      "dod": "2146-07-12",
-      "demo_id": "P04"
+      "dod": "2146-07-12"
     },
     {
       "subject_id": "10014354",
@@ -18,8 +17,7 @@
       "anchor_age": "60",
       "anchor_year": "2146",
       "anchor_year_group": "2014 - 2016",
-      "dod": null,
-      "demo_id": "P03"
+      "dod": null
     },
     {
       "subject_id": "10019003",
@@ -27,8 +25,7 @@
       "anchor_age": "65",
       "anchor_year": "2148",
       "anchor_year_group": "2011 - 2013",
-      "dod": "2155-12-03",
-      "demo_id": "P02"
+      "dod": "2155-12-03"
     },
     {
       "subject_id": "10039708",
@@ -36,8 +33,7 @@
       "anchor_age": "46",
       "anchor_year": "2138",
       "anchor_year_group": "2014 - 2016",
-      "dod": null,
-      "demo_id": "P01"
+      "dod": null
     }
   ],
   "admissions": [
@@ -88,7 +84,7 @@
       "intime": "2146-06-22 11:46:29",
       "outtime": "2146-07-13 00:27:47",
       "los": "20.528680555555557",
-      "bed_id": "BED-04"
+      "bed_id": 4
     },
     {
       "stay_id": "35727289",
@@ -99,7 +95,7 @@
       "intime": "2155-07-10 17:48:57",
       "outtime": "2155-07-13 15:04:42",
       "los": "2.8859375000000003",
-      "bed_id": "BED-02"
+      "bed_id": 2
     },
     {
       "stay_id": "37323533",
@@ -110,7 +106,7 @@
       "intime": "2143-09-19 19:40:55",
       "outtime": "2143-09-20 16:29:51",
       "los": "0.86731481481481476",
-      "bed_id": "BED-01"
+      "bed_id": 1
     },
     {
       "stay_id": "39864867",
@@ -121,7 +117,7 @@
       "intime": "2148-08-16 08:57:26",
       "outtime": "2148-08-17 14:45:17",
       "los": "1.2415625",
-      "bed_id": "BED-03"
+      "bed_id": 3
     }
   ],
   "d_items": [

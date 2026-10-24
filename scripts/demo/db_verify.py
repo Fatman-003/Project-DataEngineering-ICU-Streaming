@@ -15,7 +15,8 @@ from psycopg import sql
 
 from config import GROUP_ID, TOPIC_TABLE, CORE_TABLES, TIME_COLUMNS, IDENTITY_COLUMNS
 from db import parse_time, persist_one
-from db_admin import connect, reference_counts, runtime_counts, source_counts, verify_structure
+from db_admin import (connect, reference_counts, runtime_counts, source_counts, verify_structure,
+                      verify_reference_identity)
 from fast_verify import read_pipeline
 from registry import load_patients
 
@@ -93,6 +94,7 @@ def verify_database():
     records = read_pipeline()
     with connect() as connection:
         structure = verify_structure(connection, allow_legacy=True)
+        reference_schema = verify_reference_identity(connection)
         if structure["extension_version"] != "2.30.2":
             raise AssertionError(f"Timescale version mismatch: {structure['extension_version']}")
         version = connection.execute("SHOW server_version").fetchone()[0]
@@ -142,7 +144,8 @@ def verify_database():
         raise AssertionError("Storage lag rose during idempotency verification")
     return {"result": "PASS", "postgres_version": version, "timescale_version": structure["extension_version"],
             "core_tables": len(structure["tables"]), "hypertables": len(structure["hypertables"]),
-            "reference_counts": refs, "runtime_counts": counts, "source_counts": sources, "alert_counts": alert_counts,
+            "reference_counts": refs, "reference_schema": reference_schema,
+            "runtime_counts": counts, "source_counts": sources, "alert_counts": alert_counts,
             "consumer_group": GROUP_ID, "consumer_lag": lag,
             "kafka_database_matches": matches, "duplicate_retries": len(matches)}
 

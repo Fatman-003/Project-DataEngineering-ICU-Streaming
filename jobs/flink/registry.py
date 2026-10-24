@@ -7,6 +7,7 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[2]
 IDENTITY_FIELDS = ("subject_id", "hadm_id", "stay_id", "bed_id")
+BED_IDS = {"P01": 1, "P02": 2, "P03": 3, "P04": 4}
 
 
 def load_patients(path=None):
@@ -17,8 +18,10 @@ def load_patients(path=None):
     for index, patient in enumerate(patients, 1):
         if set(patient) != {*IDENTITY_FIELDS, "demo_id"}:
             raise ValueError("Unexpected patient registry fields")
-        if patient["demo_id"] != f"P{index:02}" or patient["bed_id"] != f"BED-{index:02}":
-            raise ValueError("Registry must contain P01-P04 / BED-01-BED-04 in order")
+        if patient["demo_id"] != f"P{index:02}":
+            raise ValueError("Registry must contain P01-P04 in order")
+        if type(patient["bed_id"]) is not int or patient["bed_id"] != BED_IDS[patient["demo_id"]]:
+            raise ValueError("Registry beds must be integers: P01=1, P02=2, P03=3, P04=4")
         if any(type(patient[field]) is not int or patient[field] <= 0
                for field in IDENTITY_FIELDS[:3]):
             raise ValueError("MIMIC identities must be positive integers")

@@ -11,12 +11,14 @@ from psycopg import sql
 
 PROJECT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT / "services/storage_writer"))
+sys.path.insert(0, str(PROJECT / "jobs/flink"))
 from config import CORE_TABLES, REFERENCE_TABLES, SOURCE_TABLES, RUNTIME_TABLES, TIME_COLUMNS, db_params
+from registry import load_patients
 
 SQL_ROOT = PROJECT / "docker/timescaledb/init"
 SEED = PROJECT / "config/db_reference_seed.json"
 SEED_COLUMNS = {
-    "patients": ("subject_id", "demo_id", "gender", "anchor_age", "anchor_year", "anchor_year_group", "dod"),
+    "patients": ("subject_id", "gender", "anchor_age", "anchor_year", "anchor_year_group", "dod"),
     "admissions": ("hadm_id", "subject_id", "admittime", "dischtime", "admission_type",
                    "admission_location", "discharge_location"),
     "icustays": ("stay_id", "subject_id", "hadm_id", "bed_id", "first_careunit",
@@ -26,7 +28,7 @@ SEED_COLUMNS = {
 }
 SEED_IDS = {"patients": "subject_id", "admissions": "hadm_id", "icustays": "stay_id",
             "d_items": "itemid", "d_labitems": "itemid"}
-INTEGER_COLUMNS = {"subject_id", "hadm_id", "stay_id", "itemid", "anchor_age", "anchor_year"}
+INTEGER_COLUMNS = {"subject_id", "hadm_id", "stay_id", "bed_id", "itemid", "anchor_age", "anchor_year"}
 TIMESTAMP_COLUMNS = {"admittime", "dischtime", "intime", "outtime"}
 
 
@@ -182,11 +184,88 @@ def source_counts(connection):
         sql.Identifier(table))).fetchone()[0] for table in SOURCE_TABLES}
 
 
+def reference_identity_state(connection):
+    """Inspect before CREATE/seed so fresh and legacy databases share one path."""
+    return {(table, column): (kind, nullable) for table, column, kind, nullable in connection.execute(
+        "SELECT table_name,column_name,data_type,is_nullable FROM information_schema.columns "
+        "WHERE table_schema='public' AND ((table_name='patients' AND column_name='demo_id') "
+        "OR (table_name='icustays' AND column_name='bed_id'))")}
+
+
+def reference_migration_needed(connection):
+    state = reference_identity_state(connection)
+    bed = state.get(("icustays", "bed_id"))
+    return ("patients", "demo_id") in state or bed is not None and bed[0] != "integer"
+
+
+def check_stay_beds(rows, legacy=False):
+    """Validate explicit registry bindings before any cast; never guess a bed."""
+    expected = {p["stay_id"]: p for p in load_patients()}
+    for stay, subject, admission, bed in rows:
+        patient = expected.get(stay)
+        wanted = None if patient is None else (f"BED-{patient['bed_id']:02}" if legacy else patient["bed_id"])
+        if (patient is None or (subject, admission) != (patient["subject_id"], patient["hadm_id"])
+                or bed != wanted or type(bed) is not (str if legacy else int)):
+            raise RuntimeError(f"Unexpected ICU stay/bed mapping: stay_id={stay}, bed_id={bed!r}; "
+                               "expected the frozen P01-P04 identities with BED-01..BED-04 (legacy) "
+                               "or integer beds 1..4. No reference data was changed.")
+
+
+def migrate_reference_identity(connection, backup_path=None, quiesced=False):
+    """Transactional, scoped TEXT-to-INTEGER conversion and obsolete column removal."""
+    state = reference_identity_state(connection)
+    bed = state.get(("icustays", "bed_id"))
+    if bed is not None and bed[0] not in ("text", "integer"):
+        raise RuntimeError(f"Unsupported icustays.bed_id type: {bed[0]}; refusing migration")
+    changed = ("patients", "demo_id") in state or bed is not None and bed[0] == "text"
+    if changed and (not quiesced or not backup_path or not Path(backup_path).is_file()
+                    or Path(backup_path).stat().st_size == 0):
+        raise RuntimeError("Reference identity migration requires a verified backup and quiesced ICU consumers")
+    with connection.transaction():
+        if changed:
+            # Lock only the two owned reference tables; avoid a check/cast race.
+            connection.execute("LOCK TABLE public.patients, public.icustays IN ACCESS EXCLUSIVE MODE")
+        if bed is not None:
+            rows = connection.execute(
+                "SELECT stay_id,subject_id,hadm_id,bed_id FROM public.icustays ORDER BY stay_id").fetchall()
+            check_stay_beds(rows, legacy=bed[0] == "text")
+        if bed is not None and bed[0] == "text":
+            connection.execute("ALTER TABLE public.icustays ALTER COLUMN bed_id TYPE INTEGER USING "
+                               "CASE bed_id WHEN 'BED-01' THEN 1 WHEN 'BED-02' THEN 2 "
+                               "WHEN 'BED-03' THEN 3 WHEN 'BED-04' THEN 4 END")
+        if ("patients", "demo_id") in state:
+            # PostgreSQL removes this column's own UNIQUE constraint/index.
+            # External dependencies cause an error/rollback; never use CASCADE.
+            connection.execute("ALTER TABLE public.patients DROP COLUMN demo_id")
+    return changed
+
+
+def verify_reference_identity(connection):
+    state = reference_identity_state(connection)
+    if ("patients", "demo_id") in state or state.get(("icustays", "bed_id")) != ("integer", "NO"):
+        raise RuntimeError("Expected no patients.demo_id and icustays.bed_id INTEGER NOT NULL")
+    unique = connection.execute(
+        "SELECT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid='public.icustays'::regclass "
+        "AND contype='u' AND conkey=ARRAY[(SELECT attnum FROM pg_attribute "
+        "WHERE attrelid='public.icustays'::regclass AND attname='bed_id')]::smallint[])").fetchone()[0]
+    if not unique:
+        raise RuntimeError("icustays.bed_id must retain its UNIQUE constraint")
+    rows = connection.execute(
+        "SELECT stay_id,subject_id,hadm_id,bed_id FROM public.icustays ORDER BY bed_id").fetchall()
+    check_stay_beds(rows)
+    if len(rows) != 4 or len({row[3] for row in rows}) != 4:
+        raise RuntimeError("Expected four distinct frozen integer ICU beds")
+    return {"patients_demo_id_absent": True, "bed_type": "integer", "bed_not_null": True,
+            "bed_unique": True, "stay_beds": [list(row) for row in rows]}
+
+
 def initialize(keep=False, backup_path=None, quiesced=False):
     with connect() as connection, connection.transaction():
         migrated = migrate_sources(connection, backup_path, quiesced)
+        reference_migrated = migrate_reference_identity(connection, backup_path, quiesced)
         apply_schema(connection)
         seed_references(connection)
+        reference_schema = verify_reference_identity(connection)
         structure = verify_structure(connection, allow_legacy=True)
         refs = reference_counts(connection)
         if refs["patients"] != 4 or refs["admissions"] != 4 or refs["icustays"] != 4:
@@ -197,6 +276,8 @@ def initialize(keep=False, backup_path=None, quiesced=False):
             raise RuntimeError("Runtime tables did not reset")
         if any(source_counts(connection).values()):
             raise RuntimeError("MIMIC source placeholders must remain empty")
-        return {"structure": structure, "reference_counts": refs, "migrated": migrated,
-                "backup_path": backup_path, "source_counts": source_counts(connection),
+        return {"structure": structure, "reference_counts": refs, "migrated": migrated or reference_migrated,
+                "reference_migrated": reference_migrated, "reference_schema": reference_schema,
+                "backup_path": None if backup_path is None else str(backup_path),
+                "source_counts": source_counts(connection),
                 "runtime_before": before, "runtime_after": after, "kept_runtime_data": keep}
