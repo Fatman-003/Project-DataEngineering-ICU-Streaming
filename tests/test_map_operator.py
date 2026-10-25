@@ -68,6 +68,7 @@ class ManagedOperatorFixture:
 
     def __init__(self, with_classifier=False, factory=None):
         self.pending = MemoryMapState()
+        self.context = MemoryMapState()
         self.emitted = MemoryMapState()
         self.episode = MemoryValueState()
         self.observed = MemoryValueState()
@@ -105,6 +106,8 @@ class ManagedOperatorFixture:
 
     def get_map_state(self, descriptor):
         self.descriptors[descriptor.name] = descriptor
+        if descriptor.name == 'map-context-seconds':
+            return self.context
         return self.emitted if descriptor.name == 'map-emitted-episodes' else self.pending
 
     def get_state(self, descriptor):

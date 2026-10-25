@@ -64,6 +64,39 @@ median bucket đó. Các bucket low sau trong cùng episode không phát lặp.
 episode giữ identity. Episode start chỉ ở processing state và tham gia ID;
 body/table không có cột `episode_start`.
 
+## Multi-Vital Context for Hypotension Alerts
+
+MAP vẫn là trigger duy nhất: `<65 mmHg`, đủ 30 giây low evidence theo rule
+episode hiện có. HR/RR/SBP/SpO2 chỉ bổ sung ngữ cảnh, không tạo alert độc lập,
+không xác nhận recovery, không đổi `severity=CRITICAL` hay identity của alert.
+
+| Tín hiệu | Điều kiện bổ sung | Phân loại |
+|---|---|---|
+| HR | `>100 bpm` | `HIGH_HR` |
+| RR | `>=22 breaths/min` | `HIGH_RR` |
+| SBP | `<=100 mmHg` | `LOW_SBP` |
+| SpO2 | `<=91%` | `LOW_SPO2` |
+
+Mỗi tín hiệu dùng median trong **cùng bucket Event Time 1 giây** kích hoạt
+MAP alert, sau validation/dedup/Late Event filtering. Bucket được chốt bằng
+Watermark hiện có; không đợi thêm tín hiệu còn thiếu và không dùng lại giá trị
+từ bucket trước. Mỗi tín hiệu giữ tối đa 256 mẫu theo cùng deterministic
+bottom-k như MAP, đủ cho Normal/HF100/HF200; state bucket được xóa khi chốt.
+Có giá trị nhưng không thỏa điều kiện thì là `NORMAL`; không có quan sát hợp
+lệ trong bucket đó thì là `UNKNOWN`, không được coi là normal và không ngăn
+MAP alert. `additional_abnormalities` chỉ đếm HR/RR/SBP/SpO2 bất thường, không
+đếm MAP hoặc `UNKNOWN`; đây không phải điểm nguy cơ y khoa.
+
+Các giá trị/phân loại được ghi trong **`trigger_message`** (tối đa 1024 ký tự),
+không thêm trường JSON. Ví dụ:
+
+```text
+MAP 62 mmHg (< 65): >= 30s accumulated low evidence; HR=112 HIGH_HR; RR=25 HIGH_RR; SBP=95 LOW_SBP; SpO2=97 NORMAL; additional_abnormalities=3
+```
+
+Các ngưỡng này là tham số ngữ cảnh thử nghiệm phục vụ nghiên cứu kỹ thuật,
+**không phải chẩn đoán sepsis đã được xác nhận**.
+
 ## Transient recovery và confirmed recovery
 
 Một observation normal không reset ngay episode. Các positive timestamp
