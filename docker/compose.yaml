@@ -1,0 +1,264 @@
+name: icu
+
+services:
+  icu-kafka:
+    image: apache/kafka:4.2.2
+    container_name: icu-kafka
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9092:9092"
+    environment:
+      CLUSTER_ID: JuhZ6ViaSwuvZLAvEHnr_g
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,INTERNAL://:9094
+      # Host clients get the loopback IPv4 address; containers use INTERNAL.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:9092,INTERNAL://icu-kafka:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,INTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@icu-kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - icu-kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  icu-kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: icu-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: ICU-LOCAL
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: icu-kafka:9094
+      KAFKA_CLUSTERS_0_READONLY: "true"
+    depends_on:
+      icu-kafka:
+        condition: service_healthy
+
+  icu-db:
+    image: timescale/timescaledb:2.30.2-pg17
+    container_name: icu-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - icu-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  icu-server:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    image: icu-server:local
+    container_name: icu-server
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      SPRING_DATASOURCE_URL: jdbc:postgresql://icu-db:5432/${POSTGRES_DB:-icu}
+      TZ: UTC
+    env_file:
+      - ../.env
+    depends_on:
+      icu-db:
+        condition: service_healthy
+      icu-kafka:
+        condition: service_healthy
+
+  icu-web:
+    build:
+      context: ../client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_WS_URL: ""
+    image: icu-web:local
+    container_name: icu-web
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "3000:8080"
+    depends_on:
+      - icu-server
+
+  icu-init:
+    build:
+      context: ..
+      dockerfile: docker/init/Dockerfile
+    image: icu-init:local
+    container_name: icu-init
+    restart: "no"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    depends_on:
+      icu-kafka:
+        condition: service_healthy
+      icu-db:
+        condition: service_healthy
+      icu-server:
+        condition: service_started
+
+  icu-storage-writer:
+    build:
+      context: ..
+      dockerfile: services/storage_writer/Dockerfile
+    image: icu-storage-writer:v1
+    container_name: icu-storage-writer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TIMESCALE_HOST: icu-db
+      TIMESCALE_PORT: 5432
+    depends_on:
+      icu-db:
+        condition: service_healthy
+      icu-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/icu-writer-ready && kill -0 1 && python -c 'import psycopg; from services.storage_writer.config import db_params; psycopg.connect(**db_params()).close()'"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  icu-flink-jobmanager:
+    build:
+      context: ./flink
+      dockerfile: Dockerfile
+    image: icu-pyflink:2.3.0-kafka5.0.0-2.2-v2
+    container_name: icu-flink-jobmanager
+    restart: unless-stopped
+    command: jobmanager
+    ports:
+      - "127.0.0.1:8081:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      ICU_PATIENT_CONFIG: /opt/flink/config/demo_patients.yaml
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+        rest.bind-address: 0.0.0.0
+        taskmanager.numberOfTaskSlots: 1
+        parallelism.default: 1
+        jobmanager.memory.process.size: 1024m
+        taskmanager.memory.process.size: 2048m
+        python.executable: /opt/pyflink/bin/python
+        python.client.executable: /opt/pyflink/bin/python
+        execution.checkpointing.interval: 10s
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: file:///opt/flink/checkpoints
+    volumes:
+      - ../jobs/flink:/opt/flink/jobs:ro
+      - ../config/demo_patients.yaml:/opt/flink/config/demo_patients.yaml:ro
+      - icu-flink-checkpoints:/opt/flink/checkpoints
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8081/overview"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      default:
+        aliases:
+          - jobmanager
+    depends_on:
+      icu-kafka:
+        condition: service_healthy
+
+  icu-flink-taskmanager:
+    image: icu-pyflink:2.3.0-kafka5.0.0-2.2-v2
+    container_name: icu-flink-taskmanager
+    restart: unless-stopped
+    command: taskmanager
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      ICU_PATIENT_CONFIG: /opt/flink/config/demo_patients.yaml
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        rest.address: jobmanager
+        rest.bind-address: 0.0.0.0
+        taskmanager.numberOfTaskSlots: 1
+        parallelism.default: 1
+        jobmanager.memory.process.size: 1024m
+        taskmanager.memory.process.size: 2048m
+        python.executable: /opt/pyflink/bin/python
+        python.client.executable: /opt/pyflink/bin/python
+        execution.checkpointing.interval: 10s
+        execution.checkpointing.storage: filesystem
+        execution.checkpointing.dir: file:///opt/flink/checkpoints
+    volumes:
+      - ../jobs/flink:/opt/flink/jobs:ro
+      - ../config/demo_patients.yaml:/opt/flink/config/demo_patients.yaml:ro
+      - icu-flink-checkpoints:/opt/flink/checkpoints
+    depends_on:
+      icu-flink-jobmanager:
+        condition: service_healthy
+
+  icu-flink-submit:
+    image: icu-pyflink:2.3.0-kafka5.0.0-2.2-v2
+    container_name: icu-flink-submit
+    restart: "no"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      ICU_PATIENT_CONFIG: /opt/flink/config/demo_patients.yaml
+      FLINK_PROPERTIES: |
+        rest.address: jobmanager
+    volumes:
+      - ../jobs/flink:/opt/flink/jobs:ro
+      - ../config/demo_patients.yaml:/opt/flink/config/demo_patients.yaml:ro
+    depends_on:
+      icu-flink-jobmanager:
+        condition: service_healthy
+      icu-init:
+        condition: service_completed_successfully
+    command:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        if /opt/flink/bin/flink list 2>/dev/null | grep -q "ICU business telemetry"; then
+          echo "ICU Flink job already running; skipping submit"
+        else
+          /opt/flink/bin/flink run -d -py /opt/flink/jobs/runtime_pipeline.py --offset earliest
+        fi
+
+networks:
+  default:
+    name: icu-net
+
+volumes:
+  icu-kafka-data:
+    name: icu-kafka-data
+  icu-db-data:
+    name: icu-db-data
+  icu-flink-checkpoints:
+    name: icu-flink-checkpoints

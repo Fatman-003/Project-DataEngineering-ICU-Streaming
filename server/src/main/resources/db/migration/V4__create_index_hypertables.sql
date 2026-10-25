@@ -1,0 +1,19 @@
+CREATE INDEX IF NOT EXISTS idx_patient_telemetry_stay_time
+    ON patient_telemetry_stream (stay_id, sample_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_vitals_window_stay_time
+    ON vitals_sliding_window_5m (stay_id, window_end DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sepsis_alert_stay_time
+    ON sepsis_alert_events (stay_id, alert_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sepsis_alert_type_time
+    ON sepsis_alert_events (alert_type, alert_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_sepsis_alert_active_time
+    ON sepsis_alert_events (alert_time DESC)
+    WHERE status = 'ACTIVE';
+
+CREATE INDEX IF NOT EXISTS idx_sepsis_alert_active_severity
+    ON sepsis_alert_events (severity, alert_time DESC)
+    WHERE status = 'ACTIVE';
