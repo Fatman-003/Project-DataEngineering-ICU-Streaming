@@ -133,6 +133,9 @@ CREATE TABLE IF NOT EXISTS patient_telemetry_stream (
 Một hàng cho mỗi stay/cửa sổ đã đóng: Flink tính mean của từng field khác null
 trên `[window_end − 5 phút, window_end)`, slide 1 phút. Writer không tính lại.
 DB không có CHECK range cho `avg_*`; consumer validation kiểm tra range.
+Flink tính thêm population variance bằng Welford, đếm độc lập từng tín hiệu:
+`N=0` mean/variance NULL; `N=1` variance NULL; `N>=2` dùng `M2/N`, tín hiệu
+hằng có variance 0. `var_*` phải hữu hạn và không âm theo consumer validation.
 
 ```sql
 CREATE TABLE IF NOT EXISTS vitals_sliding_window_5m (
@@ -140,9 +143,17 @@ CREATE TABLE IF NOT EXISTS vitals_sliding_window_5m (
     stay_id BIGINT NOT NULL REFERENCES icustays(stay_id),
     avg_heart_rate DOUBLE PRECISION, avg_map DOUBLE PRECISION,
     avg_sbp DOUBLE PRECISION, avg_spo2 DOUBLE PRECISION,
+    var_heart_rate DOUBLE PRECISION, var_map DOUBLE PRECISION,
+    var_sbp DOUBLE PRECISION, var_spo2 DOUBLE PRECISION,
     PRIMARY KEY (window_end, stay_id)
 );
 ```
+
+Bốn cột nullable được tạo trong `V3__create_hypertables.sql` bằng `ADD COLUMN
+IF NOT EXISTS`, không có V6 riêng. Với DB đã áp dụng V3 cũ: sao lưu, áp dụng
+phần thêm cột rồi Flyway repair/validate checksum trước khi khởi động server mới.
+Hàng cũ giữ nguyên, variance ban đầu là NULL; message cũ thiếu `var_*` cũng lưu
+NULL. Giữ PK, hypertable, indexes và `ON CONFLICT DO NOTHING`; không backfill.
 
 ### `sepsis_alert_events`
 

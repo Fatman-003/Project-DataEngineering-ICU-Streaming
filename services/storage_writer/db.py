@@ -10,7 +10,8 @@ from config import TOPIC_TABLE, TIME_COLUMNS, IDENTITY_COLUMNS
 REGISTRY = {str(p["stay_id"]): p for p in load_patients()}
 TABLE_COLUMNS = {
     "patient_telemetry_stream": ("sample_time", "stay_id", "heart_rate", "map", "sbp", "spo2"),
-    "vitals_sliding_window_5m": ("window_end", "stay_id", "avg_heart_rate", "avg_map", "avg_sbp", "avg_spo2"),
+    "vitals_sliding_window_5m": ("window_end", "stay_id", "avg_heart_rate", "avg_map", "avg_sbp", "avg_spo2",
+                                "var_heart_rate", "var_map", "var_sbp", "var_spo2"),
     "sepsis_alert_events": ("alert_time", "alert_id", "stay_id", "alert_type", "severity",
                             "trigger_value", "trigger_message", "status")}
 TIMESTAMPS = frozenset(TIME_COLUMNS.values())

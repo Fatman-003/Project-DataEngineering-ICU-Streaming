@@ -26,6 +26,13 @@ CREATE TABLE IF NOT EXISTS vitals_sliding_window_5m (
     PRIMARY KEY (window_end, stay_id)
 );
 
+-- Include variance for fresh schemas and preserve rows when upgrading local schemas.
+ALTER TABLE vitals_sliding_window_5m
+    ADD COLUMN IF NOT EXISTS var_heart_rate DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS var_map DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS var_sbp DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS var_spo2 DOUBLE PRECISION;
+
 CREATE TABLE IF NOT EXISTS sepsis_alert_events (
     alert_time TIMESTAMPTZ NOT NULL,
     alert_id UUID NOT NULL,

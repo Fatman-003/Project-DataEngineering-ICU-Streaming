@@ -167,7 +167,7 @@ dưới dạng Late Event, không sửa sample đã chốt. Không có correctio
 `ON CONFLICT DO NOTHING`. Replay khác payload nhưng trùng PK cũng không
 overwrite DB; không suy ra rằng Writer tự phát hiện mọi conflict.
 
-## `icu.vitals.5m`: trung bình cửa sổ
+## `icu.vitals.5m`: trung bình và phương sai cửa sổ
 
 `event_type=VITALS_WINDOW_5M`, producer hiện là `icu-flink`; metadata chung
 áp dụng như trên. Group theo stay, window **5 phút**, slide **1 phút**.
@@ -180,9 +180,16 @@ overwrite DB; không suy ra rằng Writer tự phát hiện mọi conflict.
 | `avg_map` | number hoặc null | Tùy chọn; 0..300 |
 | `avg_sbp` | number hoặc null | Tùy chọn; 0..350 |
 | `avg_spo2` | number hoặc null | Tùy chọn; 0..100 |
+| `var_heart_rate` | number hoặc null | Tùy chọn; hữu hạn, >=0 |
+| `var_map` | number hoặc null | Tùy chọn; hữu hạn, >=0 |
+| `var_sbp` | number hoặc null | Tùy chọn; hữu hạn, >=0 |
+| `var_spo2` | number hoặc null | Tùy chọn; hữu hạn, >=0 |
 
-Mean tính từ các wide sample trên `[window_end − 5 phút, window_end)`; mỗi
-field có sum/count riêng, bỏ null. Ít nhất một `avg_*` khác null; cửa sổ rỗng
+Mean và population variance tính từ các wide sample trên
+`[window_end − 5 phút, window_end)` bằng Welford; mỗi tín hiệu có count/mean/M2
+riêng, bỏ null. Variance = `SUM((x − mean)^2) / N`, không phải sample variance.
+`N=0`: mean/variance là null; `N=1`: mean bằng quan sát, variance là null;
+`N>=2`: tính variance, tín hiệu hằng có variance 0. Ít nhất một `avg_*` khác null; cửa sổ rỗng
 không phát. Watermark đóng cửa sổ; không sửa cửa sổ đã đóng bằng dữ liệu đến
 muộn. Không có `window_start` trong body, có thể suy ra từ `window_end`.
 
@@ -198,13 +205,24 @@ muộn. Không có `window_start` trong body, có thể suy ra từ `window_end`
   "avg_heart_rate": 88.0,
   "avg_map": 62.0,
   "avg_sbp": 110.0,
-  "avg_spo2": 97.0
+  "avg_spo2": 97.0,
+  "var_heart_rate": null,
+  "var_map": null,
+  "var_sbp": null,
+  "var_spo2": null
 }
 ```
 
 Ví dụ mean bằng sample khi cửa sổ chỉ có sample đó. UUIDv5 `message_id` theo
 stay/window_end. Writer insert `vitals_sliding_window_5m`, PK
 `(window_end, stay_id)`, `ON CONFLICT DO NOTHING`.
+
+Đây là mở rộng tương thích bằng bốn field tùy chọn, tiếp tục phát schema `1.0`
+và giữ key/metadata/header hiện có; không đổi topic/event type. Message cũ thiếu
+`var_*` vẫn hợp lệ và Writer lưu NULL; consumer cũ bỏ qua field mới theo quy ước
+business. Không thay variance bằng 0 khi thiếu dữ liệu. Bốn cột DB nằm trong
+`V3__create_hypertables.sql`; DB đã áp dụng V3 cũ cần thêm cột và Flyway repair
+checksum trước khi chạy server/Writer mới. Replay trùng PK không backfill hàng cũ.
 
 ## `icu.alerts`: tạo và cập nhật alert
 

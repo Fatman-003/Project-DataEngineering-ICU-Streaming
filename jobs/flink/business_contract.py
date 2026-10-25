@@ -149,6 +149,14 @@ def validate(event, topic, key=None, kafka_headers=None, require_headers=False):
                     fail("VALUE_OUT_OF_RANGE", field + " outside supported range")
         if kind == "VITALS_WINDOW_5M" and (parsed.second or parsed.microsecond):
             fail("INVALID_TIMESTAMP", "window_end must align to a minute")
+        if kind == "VITALS_WINDOW_5M":
+            for field in ("var_" + name for name in RANGES):
+                value = event.get(field)
+                if value is not None:
+                    if not finite_number(value):
+                        fail("INVALID_FIELD_TYPE", field + " must be a finite number or null")
+                    if value < 0:
+                        fail("VALUE_OUT_OF_RANGE", field + " must be non-negative")
     else:
         canonical_uuid(event.get("alert_id"), "alert_id")
         allowed = ("ACTIVE", "FALSE_ALARM") if kind == "SEPSIS_ALERT_CREATED" else ("ACKNOWLEDGED", "FALSE_ALARM")
