@@ -79,7 +79,7 @@ def demo_events(duration_minutes=DEFAULT_DURATION_MINUTES, start=DEFAULT_START, 
         yield from events_at(second, start, map_episode_checks=map_episode_checks)
 
 
-def next_demo_start(bootstrap="localhost:9092"):
+def next_demo_start(bootstrap="127.0.0.1:9092"):
     """Continue the shared logical clock across accelerated producer invocations."""
     from confluent_kafka import Consumer, TopicPartition
     from contracts import parse_event
@@ -111,7 +111,7 @@ def next_demo_start(bootstrap="localhost:9092"):
 
 
 def run_demo(speed=1, duration_minutes=DEFAULT_DURATION_MINUTES, loop=False, raw=False, start=None,
-             bootstrap="localhost:9092", quiet=False, interval_seconds=DEFAULT_INTERVAL_SECONDS,
+             bootstrap="127.0.0.1:9092", quiet=False, interval_seconds=DEFAULT_INTERVAL_SECONDS,
              skip_missed_ticks=True, map_episode_checks=False):
     from confluent_kafka import Producer
     if not math.isfinite(speed) or speed <= 0 or not math.isfinite(duration_minutes) or duration_minutes <= 0:
