@@ -1,0 +1,18 @@
+# Sử dụng công cụ AI (giải pháp Spark)
+
+Đề cương môn học yêu cầu ghi rõ công cụ AI và cách sử dụng. File này liệt kê các
+phần của giải pháp Spark do một AI coding agent tạo ra hoặc hỗ trợ. Nhóm review,
+chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời văn cuối cùng của báo cáo.
+
+- **Công cụ.** Claude Code (Anthropic), model Claude Opus 5.5, chạy trong repo
+  dự án trên server Linux dùng để thử nghiệm.
+- **Cách dùng.** Nhóm viết plan (`docs/plans/SPARK_ALTERNATIVE_PLAN.md`). Agent
+  hiện thực theo từng phase, dừng lại sau mỗi phase để nhóm review, và hỏi lại
+  nhóm mỗi khi repo khác với giả định của plan.
+
+| Phase | Sản phẩm | Vai trò của AI | Vai trò của nhóm |
+|---|---|---|---|
+| Chuẩn bị | `server/Dockerfile`, `docker/flink/Dockerfile`, `docker/compose.yaml` (biến tùy chọn `MAVEN_MIRROR`) | Chẩn đoán lỗi 429 của Maven Central và viết bản sửa | Duyệt bản sửa |
+| 0 | `docker/spark/Dockerfile` | Chọn và pin phiên bản (Spark, Python, jar, pip) kèm checksum | Chọn Spark 4.1.3 trong các phương án được đưa ra |
+| 0 | `jobs/spark/spikes/spike.py` | Viết và chạy spike S1–S6, thêm phân tích F1 | Review bằng chứng |
+| 0 | `docs/spark/SPIKE_FINDINGS.md`, `docs/spark/DECISIONS.md` | Soạn từ output spike | Quyết định D1 (baseline), D2 (phiên bản), D5 (nhãn), D10 (đang chờ) |
