@@ -15,8 +15,9 @@ ENV PATH="/opt/pyflink/bin:${PATH}" \
 # Apache has not published an official 2.3 connector artifact yet.
 ARG KAFKA_CONNECTOR_VERSION=5.0.0-2.2
 ARG KAFKA_CONNECTOR_SHA256=5605c691d11a501382c383fecba37a7a552467da5ab7ba904ef5d6f3d62c5616
+ARG MAVEN_MIRROR=https://repo.maven.apache.org/maven2
 RUN curl --fail --location --retry 3 \
-      "https://repo.maven.apache.org/maven2/org/apache/flink/flink-sql-connector-kafka/${KAFKA_CONNECTOR_VERSION}/flink-sql-connector-kafka-${KAFKA_CONNECTOR_VERSION}.jar" \
+      "${MAVEN_MIRROR}/org/apache/flink/flink-sql-connector-kafka/${KAFKA_CONNECTOR_VERSION}/flink-sql-connector-kafka-${KAFKA_CONNECTOR_VERSION}.jar" \
       -o /opt/flink/lib/flink-sql-connector-kafka.jar \
     && echo "${KAFKA_CONNECTOR_SHA256}  /opt/flink/lib/flink-sql-connector-kafka.jar" | sha256sum -c - \
     && cp /opt/flink/opt/flink-python-2.3.0.jar /opt/flink/lib/ \

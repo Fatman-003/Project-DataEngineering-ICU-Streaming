@@ -69,6 +69,8 @@ services:
     build:
       context: ../server
       dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR:-}
     image: icu-server:local
     container_name: icu-server
     restart: unless-stopped
@@ -155,6 +157,8 @@ services:
     build:
       context: ./flink
       dockerfile: Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR:-https://repo.maven.apache.org/maven2}
     image: icu-pyflink:2.3.0-kafka5.0.0-2.2-v2
     container_name: icu-flink-jobmanager
     restart: unless-stopped

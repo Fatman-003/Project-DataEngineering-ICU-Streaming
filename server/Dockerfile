@@ -3,6 +3,12 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
 
+# Optional Maven Central mirror, e.g. when repo.maven.apache.org returns 429.
+ARG MAVEN_MIRROR=""
+RUN if [ -n "$MAVEN_MIRROR" ]; then \
+      mkdir -p /root/.m2 && printf '<settings><mirrors><mirror><id>central-mirror</id><mirrorOf>central</mirrorOf><url>%s</url></mirror></mirrors></settings>\n' "$MAVEN_MIRROR" > /root/.m2/settings.xml; \
+    fi
+
 COPY pom.xml .
 RUN mvn -q -DskipTests dependency:go-offline
 
