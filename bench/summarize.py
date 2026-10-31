@@ -195,7 +195,7 @@ def markdown(summary):
         lines += ["## E2 — Latency theo tải (ms)", "",
                   "| Tải | Engine | Trigger | Telemetry p50 | Telemetry p95 | Cửa sổ p50 | Cửa sổ p95 | Alert p50 | Alert max | CPU TB (%) | RAM đỉnh (MiB) | Drain |",
                   "|---|---|---|---|---|---|---|---|---|---|---|---|"]
-        order = {"normal": 0, "hf100": 1, "hf200": 2}
+        order = {"normal": 0, "speed5": 1, "speed10": 2, "hf100": 3}
         for e in sorted(e2, key=lambda e: (order.get(e["profile"], 9), e["engine"], e["trigger"])):
             lat = e["latency"]
             lines.append(f"| {e['profile']} | {e['engine']} | {e['trigger']} | {fmt(lat.get('telemetry', {}).get('p50'))} | "
@@ -213,7 +213,7 @@ def markdown(summary):
         lines.append("")
     e3 = [e for e in entries if e["experiment"] == "E3"]
     if e3:
-        lines += ["## E3 — Throughput tối đa (nạp sẵn HF200 × 10 phút)", "",
+        lines += ["## E3 — Throughput tối đa (nạp sẵn HF200 × 2 phút)", "",
                   "| Engine | Thời gian tới output cuối (s) | Event/giây | CPU TB (%) | RAM đỉnh (MiB) | Drain |",
                   "|---|---|---|---|---|---|"]
         for e in e3:
@@ -224,7 +224,7 @@ def markdown(summary):
         lines.append("")
     e4 = [e for e in entries if e["experiment"] == "E4"]
     if e4:
-        lines += ["## E4 — Phục hồi lỗi (HF100, kill engine ở giây 150)", "",
+        lines += ["## E4 — Phục hồi lỗi (tải speed10 = 240 msg/s, kill engine ở giây 150)", "",
                   "| Engine | Output đầu tiên sau restart (s) | Bản ghi trùng | Telemetry thiếu | Cửa sổ thiếu | Recall telemetry |",
                   "|---|---|---|---|---|---|"]
         for e in e4:

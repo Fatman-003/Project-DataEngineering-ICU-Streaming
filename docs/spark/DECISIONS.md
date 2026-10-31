@@ -337,3 +337,29 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
   dedup và phân loại trễ cho labevents rồi ghi DLQ; Q_labs của Spark chỉ đếm (D14).
   Số DLQ lab của từng engine được in riêng (`labevents=`). Trong mọi kịch bản demo,
   lab đều hợp lệ nên số này bằng 0.
+
+## D25. Mức tải E2/E4 và kích thước E3 theo năng lực đo được
+
+- **Bối cảnh.** Plan đặt tải E2 ở 24, 2.400 (HF100) và 4.800 (HF200) msg/s, và E3
+  nạp sẵn HF200 × 10 phút (khoảng 2,9 triệu event). Dưới ngân sách D13 (TaskManager
+  1,5 CPU), job PyFlink chỉ xử lý được **khoảng 430 event RAW/s** (E3 r1: 576.001
+  event trong 1.340 s; đo lại khi đang chạy: 428–443/s). Pipeline có 6 operator Python
+  nối tiếp, mỗi bản ghi đi qua cầu JVM↔Python dưới dạng JSON. Ở HF100/HF200, Flink
+  chỉ xả backlog được sau khoảng 28/56 phút, và "latency" khi đó là thời gian chờ
+  trong hàng đợi, tăng tuyến tính theo thời gian chạy.
+- **Lựa chọn** (người dùng duyệt). E2 dùng ba mức **bền vững** dưới năng lực của engine
+  chậm hơn: `normal` 24 msg/s (6%), `speed5` 120 msg/s (28%), `speed10` 240 msg/s
+  (56%). Hai mức sau tạo bằng `run_icu_demo.py --speed N`: event time chạy nhanh N lần,
+  pacing vẫn theo thời gian thực, wall time vẫn 5 phút. Thêm **một** run quá tải HF100
+  cho mỗi engine (r1) để minh họa. E3 giảm còn HF200 × 2 phút (576 nghìn event). E4
+  chạy ở `speed10`.
+- **Lý do.** Mục tiêu của E2 là latency xử lý, nên phải đo khi engine theo kịp tải. Năng
+  lực tối đa đã được E3 đo riêng. Ở catch-up, Spark gom 576 nghìn event vào một
+  micro-batch (Q_wide 61 s, Q_alert 92 s) và đạt khoảng 6.000 event/s, nên HF100 quá
+  tải Flink nhưng không quá tải Spark. Đây chính là điểm minh họa cho H2.
+- **Hệ quả.** Ở `speed5`/`speed10`, một giây wall chứa 5/10 giây event time, nên cửa
+  sổ và bucket MAP đóng nhanh hơn tương ứng, và mỗi run có nhiều cửa sổ/alert hơn.
+  Định nghĩa latency (§10.1, theo LogAppendTime) không đổi.
+- **Đã loại.** Giữ HF100/HF200 cho cả 3 lần lặp (15–20 giờ máy, số liệu chủ yếu đo
+  hàng đợi); bỏ giới hạn CPU (worker Python của mỗi engine đơn luồng, và hai engine
+  không còn cùng ngân sách).

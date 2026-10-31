@@ -37,9 +37,13 @@ DLQ_TOPICS = {"icu.deadletter", "icu.alt.spark.deadletter"}
 PROFILES = {
     "standard": ["--duration-minutes", "6", "--speed", "8"],           # E1: 6 min event time, 45 s wall
     "normal": ["--duration-minutes", "5", "--speed", "1"],             # 24 msg/s
-    "hf100": ["--high-frequency", "100", "--duration-minutes", "5"],   # 2,400 msg/s
-    "hf200": ["--high-frequency", "200", "--duration-minutes", "5"],   # 4,800 msg/s
+    # Sustainable loads below Flink's measured ~430 events/s (E3, DECISIONS D25):
+    # event time runs N x faster, wall time stays 5 minutes.
+    "speed5": ["--duration-minutes", "25", "--speed", "5"],            # 120 msg/s
+    "speed10": ["--duration-minutes", "50", "--speed", "10"],          # 240 msg/s
+    "hf100": ["--high-frequency", "100", "--duration-minutes", "5"],   # 2,400 msg/s: overload scenario
 }
+E2_LOADS = ("normal", "speed5", "speed10")
 
 
 def matrix(plan, repeats):
@@ -48,20 +52,25 @@ def matrix(plan, repeats):
         if plan in ("e1", "all"):
             runs.append({"experiment": "E1", "engine": "both", "profile": "standard", "trigger": "default", "repeat": r})
         if plan in ("e2", "all"):
-            for profile in ("normal", "hf100", "hf200"):
+            for profile in E2_LOADS:
                 runs.append({"experiment": "E2", "engine": "flink", "profile": profile, "trigger": "default", "repeat": r})
                 for trigger in ("default", "1s", "5s"):
                     runs.append({"experiment": "E2", "engine": "spark", "profile": profile, "trigger": trigger, "repeat": r})
             # D10: the Kafka client default fetch wait, reported for transparency.
             runs.append({"experiment": "E2", "engine": "spark", "profile": "normal", "trigger": "default",
                          "fetch_wait_ms": 500, "repeat": r})
+            if r == 1:
+                # One overload illustration per engine (D25): HF100 exceeds Flink's capacity, not Spark's.
+                for engine in ("flink", "spark"):
+                    runs.append({"experiment": "E2", "engine": engine, "profile": "hf100", "trigger": "default",
+                                 "repeat": r})
         if plan in ("e3", "all"):
             for engine in ("flink", "spark"):
-                runs.append({"experiment": "E3", "engine": engine, "profile": "preload_hf200_10m", "trigger": "default",
+                runs.append({"experiment": "E3", "engine": engine, "profile": "preload_hf200_2m", "trigger": "default",
                              "repeat": r})
         if plan in ("e4", "all"):
             for engine in ("flink", "spark"):
-                runs.append({"experiment": "E4", "engine": engine, "profile": "hf100", "trigger": "default",
+                runs.append({"experiment": "E4", "engine": engine, "profile": "speed10", "trigger": "default",
                              "kill_after_s": 150, "repeat": r})
     return runs
 
@@ -210,7 +219,7 @@ class Bench:
                                     env={**os.environ, "PYTHONUNBUFFERED": "1"})
 
     def preload(self, out_dir):
-        command = [sys.executable, str(PROJECT / "bench/preload.py"), "--frequency", "200", "--minutes", "10",
+        command = [sys.executable, str(PROJECT / "bench/preload.py"), "--frequency", "200", "--minutes", "2",
                    "--start-time", START_TIME, "--bootstrap", self.bootstrap]
         with open(out_dir / "preload.log", "w") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)

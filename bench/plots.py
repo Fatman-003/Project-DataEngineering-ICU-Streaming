@@ -25,8 +25,9 @@ SERIES = {"flink": "#2a78d6", "spark default": "#eb6834", "spark 1s": "#1baf7a",
           "spark default+fetch500": "#e87ba4"}
 LABELS = {"flink": "Flink", "spark default": "Spark (trigger mặc định)", "spark 1s": "Spark (trigger 1 s)",
           "spark 5s": "Spark (trigger 5 s)", "spark default+fetch500": "Spark (fetch.max.wait 500 ms)"}
-PROFILES = ("normal", "hf100", "hf200")
-PROFILE_LABELS = {"normal": "Normal (24 msg/s)", "hf100": "HF100 (2.400 msg/s)", "hf200": "HF200 (4.800 msg/s)"}
+PROFILES = ("normal", "speed5", "speed10")
+PROFILE_LABELS = {"normal": "Normal (24 msg/s)", "speed5": "×5 (120 msg/s)", "speed10": "×10 (240 msg/s)",
+                  "hf100": "HF100 (2.400 msg/s, quá tải Flink)"}
 KIND_LABELS = {"telemetry": "Telemetry", "window": "Cửa sổ 5 phút", "alert": "Alert"}
 
 plt.rcParams.update({
@@ -140,7 +141,7 @@ def throughput():
                       ha="center", color=INK)
     axis.set_xticks(range(len(engines)), ["Flink", "Spark"])
     axis.set_ylabel("Event RAW / giây")
-    axis.set_title("E3 — Throughput khi xử lý backlog HF200 × 10 phút\n(trung vị, thanh lỗi = min–max)")
+    axis.set_title("E3 — Throughput khi xử lý backlog HF200 × 2 phút\n(trung vị, thanh lỗi = min–max)")
     axis.grid(axis="x", visible=False)
     figure.savefig(PLOTS / "e3_throughput.png", dpi=150, bbox_inches="tight")
     plt.close(figure)
