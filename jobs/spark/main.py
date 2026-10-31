@@ -7,7 +7,7 @@ from metrics_listener import JsonlProgressListener
 from spark_topics import ensure_topics
 
 # Query name -> module exposing build(spark, config). Later phases add the rest.
-QUERY_MODULES = {"labs": "q_labs"}
+QUERY_MODULES = {"wide": "q_wide", "labs": "q_labs"}
 
 
 def main():

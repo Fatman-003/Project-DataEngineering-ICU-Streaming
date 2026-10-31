@@ -30,7 +30,11 @@ docker run --rm --network icu-net \
 | S4 | Kafka sink ghi cột `headers`, đọc lại qua `validate(..., require_headers=True)` | **Đúng**, 5/5 message hợp lệ |
 | S5 | `spark.sql.shuffle.partitions` nhỏ cho latency tốt hơn rõ rệt so với 200 | **Đúng**: 0,84 s so với 42,5 s mỗi batch |
 | S6 | Thứ tự dòng trong nhóm không theo `event_time`, phải tự sort | **Đúng**: dòng đến theo thứ tự offset, không theo event time |
+| S7 | Dòng bị từ chối có `event_ts = NULL` lọt qua bộ lọc late và không làm watermark tiến | **Đúng** |
+| S8 | `transformWithStateInPandas` có ngữ nghĩa late/no-data giống `applyInPandasWithState` | **Đúng**, nhưng không có TTL ở `EventTime` và timer kích hoạt ở `wm ≥ T` |
+| S9 | Chi phí dedup khi tập `event_id` lớn dần | `applyInPandasWithState` + JSON: **ổn định khoảng 900 ms/batch** tới 120 nghìn id; `MapState` của TWS: **không xong nổi batch đầu** |
 
+S7–S9 là spike bổ sung ở Phase 2 ([`spike_state.py`](../../jobs/spark/spikes/spike_state.py)).
 Phát hiện ngoài kế hoạch: F1 (Kafka `fetch.max.wait.ms` chiếm khoảng 500 ms mỗi
 batch) và F2 (Python 3.10 của image không parse được hậu tố `Z`).
 
@@ -174,3 +178,66 @@ ValueError: Invalid isoformat string: '2026-10-16T20:00:00Z'
 
 Nếu không xử lý, `validation.parse_timestamp` sẽ từ chối **mọi** event. Image
 cài thêm Python 3.12.15 (D3); spike chạy trên interpreter đó.
+
+## S7. Dòng bị từ chối và watermark (Phase 2)
+
+**Vấn đề.** Plan gợi ý cho dòng parse lỗi lấy `event_ts` bằng timestamp Kafka.
+Timestamp đó là giờ thực (2026-10-31), trong khi `event_time` của demo/benchmark
+nằm ở quá khứ (`--start-time` cố định). Chỉ một dòng lỗi cũng sẽ đẩy watermark lên
+"hiện tại", và mọi event sau đó bị loại như late.
+
+**Thử.** Sau watermark 7 s, gửi một dòng `REJECTED` có `event_ts = NULL` cùng hai
+dòng hợp lệ (10 s, 11 s):
+
+```
+EVIDENCE {"spike": "S7 progress", "batchId": 3, "numInputRows": 3, "watermark": "2026-10-16T20:00:07.000Z", "numRowsDroppedByWatermark": [0]}
+EVIDENCE {"spike": "S7 rows", "kind": "CALL", "watermark_s": 7.0, "seen": [10.0, 11.0]}
+EVIDENCE {"spike": "S7 rows", "kind": "CALL", "watermark_s": 7.0, "seen": ["bad"]}
+```
+
+**Kết luận.** Dòng `NULL` tới được hàm stateful (không bị loại như late) và không
+ảnh hưởng `max(event_ts)`. Đây đúng là ngữ nghĩa của Flink, nơi dòng bị từ chối rời
+pipeline trước khi gán timestamp. Xem D16.
+
+## S8. `transformWithStateInPandas` (Phase 2)
+
+Cùng kịch bản S1/S2 với API state v2 (state store RocksDB, `timeMode="EventTime"`):
+
+```
+EVIDENCE {"spike": "S8 progress", "batchId": 3, "numInputRows": 7, "watermark": "2026-10-16T20:00:07.000Z", "numRowsDroppedByWatermark": [2]}
+EVIDENCE {"spike": "S8 rows", "kind": "CALL", "watermark_s": 7.0, "seen": [10.0, 11.0, 12.0, 7.5]}
+EVIDENCE {"spike": "S8 rows", "kind": "CALL", "watermark_s": 7.0, "seen": ["null"]}
+EVIDENCE {"spike": "S8 rows", "kind": "TIMER", "watermark_s": 10.0, "fired_at": [7.5], "finalized": [7.0, 7.5, 8.0, 9.0]}
+```
+
+- Loại late giống S2 (2 dòng), cho dòng `NULL` đi qua, và timer chạy trong
+  no-data batch.
+- **Không có TTL khi `timeMode=EventTime` hoặc `None`**:
+  `[STATEFUL_PROCESSOR_INCORRECT_TIME_MODE_TO_ASSIGN_TTL] Cannot use TTL for
+  state=pending in timeMode=EventTime, use TimeMode.ProcessingTime() instead.`
+- **Biên timer khác `applyInPandasWithState`.** Timer đặt đúng bằng watermark kế
+  tiếp vẫn kích hoạt (`fired_at: [7.0]` tại `watermark_s: 7.0`), tức là `wm ≥ T`.
+- API này cần thêm gói `protobuf` (≥ 6.33.0). Spike dùng 6.33.6 trong một image
+  dẫn xuất; image chính không cài.
+
+## S9. Chi phí state dedup (Phase 2)
+
+Một bệnh nhân, mỗi batch 10.000 `event_id` mới cùng 1 bản trùng. Đo
+`triggerExecution` theo từng batch:
+
+| Biến thể | Id trong state | Thời gian batch |
+|---|---|---|
+| `applyInPandasWithState`, tập id dạng JSON trong một object state | 10k → 120k | 1.428 ms (batch đầu), sau đó **ổn định 868–960 ms** |
+| `transformWithStateInPandas`, `MapState` (1 `containsKey` + 1 `updateValue` mỗi event) | 0 → 10k | **chưa xong batch đầu sau khoảng 30 phút** (CPU khoảng 120%), phải dừng |
+
+```
+EVIDENCE {"spike": "S9 batch", "variant": "apply-json", "batch": 0, "ids_in_state": 10000, "rows": 10001, "trigger_ms": 1428}
+EVIDENCE {"spike": "S9 batch", "variant": "apply-json", "batch": 11, "ids_in_state": 120000, "rows": 7740, "trigger_ms": 936}
+```
+
+(Số dòng mỗi batch dao động vì Spark tự cắt micro-batch theo offset đã có.)
+
+**Kết luận.** Với PySpark 4.1.3, mỗi thao tác `MapState` là một round-trip socket
+giữa Python worker và JVM, nên dedup theo từng event không dùng được ở tải demo
+trở lên. Trong khi đó, serialize cả object JSON vẫn rẻ ở quy mô 10^5 id. Giữ
+`applyInPandasWithState` như plan (D18).

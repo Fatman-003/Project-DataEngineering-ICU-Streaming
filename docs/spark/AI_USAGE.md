@@ -18,3 +18,5 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | 0 | `docs/spark/SPIKE_FINDINGS.md`, `docs/spark/DECISIONS.md` | Soạn từ output spike | Quyết định D1 (baseline), D2 (phiên bản), D5 (nhãn), D10 (fetch wait) |
 | 1 | `jobs/spark/{spark_config,spark_topics,records,metrics_listener,q_labs,main}.py`, service `icu-spark` trong `docker/compose.yaml`, `docker/compose.bench.yaml` | Viết code, build image, kiểm tra healthcheck và Spark UI | Review; duyệt ngân sách tài nguyên D13 |
 | 1 | `tests/spark/test_records.py` | Viết test cho envelope nguồn, key/header sink và cấu hình | Review |
+| 2 | `jobs/spark/spikes/spike_state.py`, `SPIKE_FINDINGS.md` S7–S9 | Viết và chạy spike bổ sung về state API | Review |
+| 2 | `jobs/spark/{wide_logic,parse_step,q_wide}.py`, `tests/spark/test_wide_logic.py` | Viết logic Q_wide dùng lại module Flink, test parity với operator Flink thật, chạy so sánh trên Kafka | Review; quyết định D16–D19 |

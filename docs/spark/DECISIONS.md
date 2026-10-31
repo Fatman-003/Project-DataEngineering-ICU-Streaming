@@ -205,3 +205,50 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
   module kia, làm 3 file test cũ lỗi import.
 - **Lựa chọn.** Đặt tên `spark_config.py` và `spark_topics.py`. Các module còn
   lại (`records`, `metrics_listener`, `q_*`, `main`) không trùng tên nào trong repo.
+
+## D16. Dòng bị từ chối: `event_ts = NULL`, key `__invalid__`
+
+- **Bối cảnh.** Plan đề xuất `event_ts` bằng timestamp Kafka cho dòng không parse
+  được. Timestamp Kafka là giờ thực, còn event time của demo/benchmark nằm ở quá
+  khứ, nên watermark sẽ nhảy lên giờ thực và loại toàn bộ dữ liệu sau đó (S7).
+- **Lựa chọn.** Mọi dòng `REJECTED` (PARSE/SCHEMA/VALUE) có `event_ts = NULL` và
+  key `__invalid__`. Hàm stateful phát DLQ ngay, không lưu state.
+- **Lý do.** S7: `NULL` không bị loại như late và không làm watermark tiến, đúng như
+  Flink tách dòng bị từ chối trước bước gán timestamp.
+
+## D17. Xử lý theo thứ tự offset, không theo `event_ts`
+
+- **Bối cảnh.** Plan (§6.4, bẫy §12) yêu cầu sort theo `event_ts` trong hàm
+  stateful. Flink với parallelism 1 và 1 partition xử lý theo **thứ tự đến**. Dedup
+  (bản đến trước được giữ), `IDEMPOTENCY_CONFLICT` (sửa sample đã phát) và
+  `max_clean_ts` đều phụ thuộc thứ tự đến chứ không phụ thuộc event time.
+- **Lựa chọn.** Sort theo `offset` của Kafka (S6: Spark không đảm bảo thứ tự).
+  Việc chốt theo event time đã do điều kiện watermark quyết định (D8), nên không
+  phụ thuộc thứ tự xử lý.
+- **Lý do.** Sort theo `event_ts` có thể đảo bản gốc và bản trùng hoặc bản sửa, và
+  khi đó ra DLQ khác Flink. Test parity `tests/spark/test_wide_logic.py` khẳng định
+  kết quả trùng Flink.
+
+## D18. Giữ `applyInPandasWithState`; không dùng `transformWithStateInPandas`
+
+- **Bối cảnh.** `applyInPandasWithState` giữ **một object state cho mỗi key**, nên tập
+  `event_id` dedup của một bệnh nhân bị serialize lại mỗi batch. API v2
+  `transformWithStateInPandas` có `MapState`, timer và TTL, giống
+  `KeyedProcessFunction` của Flink hơn.
+- **Lựa chọn.** Giữ `applyInPandasWithState` như plan. State gồm 3 cột JSON/long:
+  `seen` (`event_id → event_ts`), `pending` (`ts → samples`), `maximum`.
+- **Lý do.** S9: JSON state ổn định khoảng 900 ms/batch tới 120 nghìn id; `MapState`
+  của API v2 không xử lý xong nổi 10 nghìn event trong 30 phút vì mỗi thao tác là
+  một RPC. Ngoài ra S8 cho thấy API v2 không có TTL ở chế độ `EventTime`, nên cũng
+  không thay được TTL của Flink.
+- **Hệ quả cần báo cáo.** Đây là giới hạn của **Python API** Spark 4.1.3. Bản Scala
+  của `transformWithState` không có chi phí RPC này (mục giới hạn §11.4).
+
+## D19. Dedup theo từng `stay_id` thay vì toàn cục
+
+- **Bối cảnh.** Flink dedup bằng keyed state theo `chartevents:id:<event_id>`, tức
+  là toàn cục. Spark gom state theo `stay_id` (D18).
+- **Lựa chọn.** `seen` nằm trong state của từng `stay_id`.
+- **Lý do và giới hạn.** `event_id` của simulator chứa `stay_id`, nên hai cách cho
+  cùng kết quả. Chỉ khi hai bệnh nhân gửi trùng `event_id` thì Flink báo
+  `DUPLICATE_EVENT` còn Spark không. Ghi vào mục giới hạn.
