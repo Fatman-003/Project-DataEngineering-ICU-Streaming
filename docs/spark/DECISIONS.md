@@ -363,3 +363,15 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 - **Đã loại.** Giữ HF100/HF200 cho cả 3 lần lặp (15–20 giờ máy, số liệu chủ yếu đo
   hàng đợi); bỏ giới hạn CPU (worker Python của mỗi engine đơn luồng, và hai engine
   không còn cùng ngân sách).
+
+## D26. Ma trận rút gọn (`--lite`) cho mức so sánh demo
+
+- **Bối cảnh.** Người dùng xác định mục tiêu là demo và so sánh ở mức vừa phải, không
+  cần đủ 3 lần lặp cho mọi cấu hình như plan §10.1.5.
+- **Lựa chọn.** `bench/run.py --lite`: một lần chạy cho mỗi cấu hình; E2 gồm 3 mức tải
+  × (Flink, Spark trigger mặc định, Spark trigger 5 s); E3 và E4 mỗi engine một lần. Bỏ
+  trigger 1 s, biến thể `fetch.max.wait` 500 ms và run quá tải HF100. Các run đã chạy
+  trước đó (E1 × 3, Spark trigger 1 s ở tải normal) vẫn được giữ trong tổng hợp.
+- **Hệ quả cho báo cáo.** Phần lớn ô trong bảng chỉ có n = 1, nên không có khoảng
+  min–max. Báo cáo cần nêu đây là số đo một lần, không có khoảng tin cậy. Ma trận đầy
+  đủ vẫn chạy được bằng `python bench/run.py --plan all`.

@@ -46,7 +46,12 @@ PROFILES = {
 E2_LOADS = ("normal", "speed5", "speed10")
 
 
-def matrix(plan, repeats):
+def matrix(plan, repeats, lite=False):
+    """`lite`: one repeat, Spark triggers default/5 s only, no fetch-wait or overload variants."""
+    if lite:
+        runs = [spec for spec in matrix(plan, 1)
+                if spec["trigger"] in ("default", "5s") and not spec.get("fetch_wait_ms") and spec["profile"] != "hf100"]
+        return runs
     runs = []
     for r in range(1, repeats + 1):
         if plan in ("e1", "all"):
@@ -309,8 +314,9 @@ def main():
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--docker", default="docker")
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--lite", action="store_true", help="Reduced matrix for a demo-level comparison")
     args = parser.parse_args()
-    runs = matrix(args.plan or "all", args.repeats)
+    runs = matrix(args.plan or "all", args.repeats, args.lite)
     if args.only:
         runs = [spec for spec in runs if run_name(spec) == args.only]
         if not runs:
