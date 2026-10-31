@@ -1,0 +1,674 @@
+{
+  "dataset": {
+    "records": 1000000,
+    "patients": 10,
+    "end": "2026-10-30T00:00:00+00:00",
+    "batch": 1000,
+    "writers": 4
+  },
+  "scenarios": {
+    "30d": {
+      "label": "30 ng\u00e0y",
+      "span_s": 2592000,
+      "hz": 0.038580246913580245,
+      "write": {
+        "timescaledb": {
+          "records": 1000000,
+          "elapsed_s": 116.65205766700001,
+          "records_per_s": 8572.502020107037,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 364.6129779999683,
+            "p95": 739.2075080001632,
+            "p99": 910.4008869999234,
+            "mean": 398.7497184010126,
+            "max": 1199.924373000158
+          },
+          "wall_start": 1793430305.523014,
+          "wall_end": 1793430422.1692607
+        },
+        "cassandra": {
+          "records": 1000000,
+          "elapsed_s": 84.71134658599976,
+          "records_per_s": 11804.794048277707,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 298.2855750001363,
+            "p95": 596.8919860001733,
+            "p99": 800.3692279999086,
+            "mean": 337.57268615500294,
+            "max": 1053.541924000001
+          },
+          "wall_start": 1793430429.723179,
+          "wall_end": 1793430514.4328434
+        }
+      },
+      "read": {
+        "timescaledb": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 300,
+                "p50": 0.6877089999761665,
+                "p95": 1.1219289999644388,
+                "p99": 1.550675999624218,
+                "mean": 0.7466425799960538,
+                "max": 4.698112000369292
+              },
+              "iterations": 300,
+              "rows_returned_avg": 138.90666666666667,
+              "check": [
+                139,
+                105.7,
+                90.1,
+                109.8,
+                92.7
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 50,
+                "p50": 89.38984799988248,
+                "p95": 126.81989700013219,
+                "p99": 154.88168799993218,
+                "mean": 94.22323189999588,
+                "max": 154.88168799993218
+              },
+              "iterations": 50,
+              "rows_returned_avg": 1.0,
+              "check": 99.9935
+            }
+          },
+          "wall_start": 1793430519.7979894,
+          "wall_end": 1793430525.639174
+        },
+        "cassandra": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 300,
+                "p50": 1.9332459996803664,
+                "p95": 4.204381000363355,
+                "p99": 6.407231000139291,
+                "mean": 2.2118839500020235,
+                "max": 17.43950500031133
+              },
+              "iterations": 300,
+              "rows_returned_avg": 138.90666666666667,
+              "check": [
+                139,
+                105.7,
+                90.1,
+                109.8,
+                92.7
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 50,
+                "p50": 291.6454830001385,
+                "p95": 396.1084630000187,
+                "p99": 611.1714880003092,
+                "mean": 282.07116244001554,
+                "max": 611.1714880003092
+              },
+              "iterations": 50,
+              "rows_returned_avg": 1.0,
+              "check": 99.9935
+            }
+          },
+          "wall_start": 1793430525.9327173,
+          "wall_end": 1793430544.8684602
+        }
+      }
+    },
+    "1hz": {
+      "label": "1 Hz",
+      "span_s": 100000,
+      "hz": 1.0,
+      "write": {
+        "timescaledb": {
+          "records": 1000000,
+          "elapsed_s": 148.26278381600014,
+          "records_per_s": 6744.780950835503,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 586.3865470000746,
+            "p95": 796.4777209999738,
+            "p99": 890.14282800008,
+            "mean": 589.5611962169896,
+            "max": 1022.473108000213
+          },
+          "wall_start": 1793430703.660453,
+          "wall_end": 1793430851.9213743
+        },
+        "cassandra": {
+          "records": 1000000,
+          "elapsed_s": 76.26266434399986,
+          "records_per_s": 13112.576233755428,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 289.9169620000066,
+            "p95": 461.4909769998121,
+            "p99": 531.8719940000847,
+            "mean": 303.72999250399926,
+            "max": 581.2978449998809
+          },
+          "wall_start": 1793430859.6226254,
+          "wall_end": 1793430935.8853304
+        }
+      },
+      "read": {
+        "timescaledb": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 300,
+                "p50": 5.836763999923278,
+                "p95": 8.728426000288891,
+                "p99": 11.25523400014572,
+                "mean": 6.230454373335306,
+                "max": 15.001430000211258
+              },
+              "iterations": 300,
+              "rows_returned_avg": 3600.0,
+              "check": [
+                3600,
+                99.7,
+                91.8,
+                120.1,
+                94.8
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 50,
+                "p50": 24.15413099970465,
+                "p95": 28.5503940003764,
+                "p99": 30.49055000019507,
+                "mean": 24.572504220031988,
+                "max": 30.49055000019507
+              },
+              "iterations": 50,
+              "rows_returned_avg": 1.0,
+              "check": 99.9837
+            }
+          },
+          "wall_start": 1793430940.9331439,
+          "wall_end": 1793430944.2655618
+        },
+        "cassandra": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 300,
+                "p50": 14.194854000379564,
+                "p95": 23.505911999563978,
+                "p99": 44.52351899999485,
+                "mean": 15.872420429985445,
+                "max": 56.22736499981329
+              },
+              "iterations": 300,
+              "rows_returned_avg": 3600.0,
+              "check": [
+                3600,
+                99.7,
+                91.8,
+                120.1,
+                94.8
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 50,
+                "p50": 168.02960800032452,
+                "p95": 219.82669699991675,
+                "p99": 264.92742599975827,
+                "mean": 177.13570476001223,
+                "max": 264.92742599975827
+              },
+              "iterations": 50,
+              "rows_returned_avg": 1.0,
+              "check": 99.9837
+            }
+          },
+          "wall_start": 1793430944.5484512,
+          "wall_end": 1793430959.5335886
+        }
+      }
+    },
+    "20hz": {
+      "label": "20 Hz",
+      "span_s": 5000,
+      "hz": 20.0,
+      "write": {
+        "timescaledb": {
+          "records": 1000000,
+          "elapsed_s": 148.5004078869997,
+          "records_per_s": 6733.988237668294,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 588.8902370002143,
+            "p95": 787.1580500000164,
+            "p99": 907.4570220000169,
+            "mean": 590.018926505008,
+            "max": 1076.5725900000689
+          },
+          "wall_start": 1793430969.4721198,
+          "wall_end": 1793431117.9686825
+        },
+        "cassandra": {
+          "records": 1000000,
+          "elapsed_s": 82.31820448300005,
+          "records_per_s": 12147.981194202493,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 300.02629499995237,
+            "p95": 502.3403380000673,
+            "p99": 689.2227069997716,
+            "mean": 327.3121424280016,
+            "max": 1086.68950900028
+          },
+          "wall_start": 1793431126.0146487,
+          "wall_end": 1793431208.332117
+        }
+      },
+      "read": {
+        "timescaledb": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 50,
+                "p50": 103.04029700000683,
+                "p95": 116.78298800006814,
+                "p99": 124.45737100006227,
+                "mean": 103.6532292800348,
+                "max": 124.45737100006227
+              },
+              "iterations": 50,
+              "rows_returned_avg": 72000.0,
+              "check": [
+                72000,
+                88.4,
+                83.6,
+                111.9,
+                97.0
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 20,
+                "p50": 19.473868000204675,
+                "p95": 21.981163999953424,
+                "p99": 26.210638000065956,
+                "mean": 19.94291484995756,
+                "max": 26.210638000065956
+              },
+              "iterations": 20,
+              "rows_returned_avg": 1.0,
+              "check": 100.0142
+            }
+          },
+          "wall_start": 1793431212.6499915,
+          "wall_end": 1793431219.125276
+        },
+        "cassandra": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 50,
+                "p50": 275.793313000122,
+                "p95": 366.40417599983266,
+                "p99": 588.8265710000269,
+                "mean": 292.27894081996965,
+                "max": 588.8265710000269
+              },
+              "iterations": 50,
+              "rows_returned_avg": 72000.0,
+              "check": [
+                72000,
+                88.4,
+                83.6,
+                111.9,
+                97.0
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 20,
+                "p50": 183.25235400016027,
+                "p95": 461.6783880001094,
+                "p99": 506.5862520000337,
+                "mean": 213.38418630000433,
+                "max": 506.5862520000337
+              },
+              "iterations": 20,
+              "rows_returned_avg": 1.0,
+              "check": 100.0142
+            }
+          },
+          "wall_start": 1793431219.3589628,
+          "wall_end": 1793431241.8368485
+        }
+      }
+    },
+    "100hz": {
+      "label": "100 Hz",
+      "span_s": 1000,
+      "hz": 100.0,
+      "write": {
+        "timescaledb": {
+          "records": 1000000,
+          "elapsed_s": 122.43792036200011,
+          "records_per_s": 8167.404322479496,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 491.1239180000848,
+            "p95": 588.3565399999497,
+            "p99": 612.036900000021,
+            "mean": 485.9510021299966,
+            "max": 702.4508609997611
+          },
+          "wall_start": 1793431249.5685894,
+          "wall_end": 1793431372.0035136
+        },
+        "cassandra": {
+          "records": 1000000,
+          "elapsed_s": 69.76277620500014,
+          "records_per_s": 14334.291930433907,
+          "batch_latency_ms": {
+            "n": 1000,
+            "p50": 246.87893899999835,
+            "p95": 482.31475400007184,
+            "p99": 703.9202490000207,
+            "mean": 277.2615883299941,
+            "max": 1009.6361340001749
+          },
+          "wall_start": 1793431378.7578251,
+          "wall_end": 1793431448.5197573
+        }
+      },
+      "read": {
+        "timescaledb": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 50,
+                "p50": 144.71624099996916,
+                "p95": 173.36368800033597,
+                "p99": 189.6467839997058,
+                "mean": 149.1646928999944,
+                "max": 189.6467839997058
+              },
+              "iterations": 50,
+              "rows_returned_avg": 100000.0,
+              "check": [
+                100000,
+                110.8,
+                89.3,
+                112.5,
+                93.2
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 20,
+                "p50": 19.973847000073874,
+                "p95": 21.61280500013163,
+                "p99": 29.509203000088746,
+                "mean": 20.479773700003534,
+                "max": 29.509203000088746
+              },
+              "iterations": 20,
+              "rows_returned_avg": 1.0,
+              "check": 100.0265
+            }
+          },
+          "wall_start": 1793431452.1043267,
+          "wall_end": 1793431461.0204325
+        },
+        "cassandra": {
+          "queries": {
+            "q_point_1h": {
+              "description": "Point-in-time read: every vital of 1 patient over the last hour",
+              "latency_ms": {
+                "n": 50,
+                "p50": 400.7082820003234,
+                "p95": 659.0959099999054,
+                "p99": 716.310078999868,
+                "mean": 415.3670157400393,
+                "max": 716.310078999868
+              },
+              "iterations": 50,
+              "rows_returned_avg": 100000.0,
+              "check": [
+                100000,
+                110.8,
+                89.3,
+                112.5,
+                93.2
+              ]
+            },
+            "q_avg_hr_30d": {
+              "description": "Time-window aggregation: AVG heart rate of 1 patient over 30 days",
+              "latency_ms": {
+                "n": 20,
+                "p50": 187.76033699987238,
+                "p95": 421.7899530003706,
+                "p99": 511.2481400001343,
+                "mean": 217.48793000003843,
+                "max": 511.2481400001343
+              },
+              "iterations": 20,
+              "rows_returned_avg": 1.0,
+              "check": 100.0265
+            }
+          },
+          "wall_start": 1793431461.2401154,
+          "wall_end": 1793431490.1007879
+        }
+      }
+    }
+  },
+  "workloads": [
+    {
+      "target": "timescaledb",
+      "workload": "read100",
+      "read_share": 1.0,
+      "clients": 8,
+      "elapsed_s": 20.034622634000243,
+      "ops": 43815,
+      "ops_per_s": 2186.9640771592417,
+      "read_ops_per_s": 2186.9640771592417,
+      "write_ops_per_s": 0.0,
+      "read_latency_ms": {
+        "n": 43815,
+        "p50": 1.1562060003598162,
+        "p95": 2.0075540001016634,
+        "p99": 69.2090789998474,
+        "mean": 3.6511439570255466,
+        "max": 75.73396799989496
+      },
+      "write_latency_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "mean": null,
+        "max": null
+      },
+      "exhausted": false,
+      "wall_start": 1793430554.2381916,
+      "wall_end": 1793430574.2730446
+    },
+    {
+      "target": "timescaledb",
+      "workload": "mixed70_30",
+      "read_share": 0.7,
+      "clients": 8,
+      "elapsed_s": 20.00120093800024,
+      "ops": 51849,
+      "ops_per_s": 2592.2943407609187,
+      "read_ops_per_s": 1816.140946366186,
+      "write_ops_per_s": 776.1533943947329,
+      "read_latency_ms": {
+        "n": 36325,
+        "p50": 1.0527169997658348,
+        "p95": 1.7389229997206712,
+        "p99": 63.35597599991161,
+        "mean": 2.618583601567285,
+        "max": 70.75320599960833
+      },
+      "write_latency_ms": {
+        "n": 15524,
+        "p50": 1.24619200005327,
+        "p95": 6.106671999987157,
+        "p99": 64.37202500001149,
+        "mean": 4.1576406468055485,
+        "max": 71.16073299994241
+      },
+      "exhausted": false,
+      "wall_start": 1793430575.4956267,
+      "wall_end": 1793430595.4975631
+    },
+    {
+      "target": "timescaledb",
+      "workload": "write100",
+      "read_share": 0.0,
+      "clients": 8,
+      "elapsed_s": 20.033732431000317,
+      "ops": 79398,
+      "ops_per_s": 3963.215555237179,
+      "read_ops_per_s": 0.0,
+      "write_ops_per_s": 3963.215555237179,
+      "read_latency_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "mean": null,
+        "max": null
+      },
+      "write_latency_ms": {
+        "n": 79398,
+        "p50": 1.102501999866945,
+        "p95": 1.9462640002529952,
+        "p99": 42.82492300035301,
+        "mean": 2.0144363282063398,
+        "max": 56.76075699966532
+      },
+      "exhausted": false,
+      "wall_start": 1793430596.837838,
+      "wall_end": 1793430616.870906
+    },
+    {
+      "target": "cassandra",
+      "workload": "read100",
+      "read_share": 1.0,
+      "clients": 8,
+      "elapsed_s": 20.004165244999967,
+      "ops": 23256,
+      "ops_per_s": 1162.5578830795166,
+      "read_ops_per_s": 1162.5578830795166,
+      "write_ops_per_s": 0.0,
+      "read_latency_ms": {
+        "n": 23256,
+        "p50": 2.7587380000113626,
+        "p95": 53.814431999853696,
+        "p99": 65.56023199982519,
+        "mean": 6.865876286806894,
+        "max": 197.25295499983986
+      },
+      "write_latency_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "mean": null,
+        "max": null
+      },
+      "exhausted": false,
+      "wall_start": 1793430625.3828237,
+      "wall_end": 1793430645.3867948
+    },
+    {
+      "target": "cassandra",
+      "workload": "mixed70_30",
+      "read_share": 0.7,
+      "clients": 8,
+      "elapsed_s": 20.040120503000253,
+      "ops": 36689,
+      "ops_per_s": 1830.777414462513,
+      "read_ops_per_s": 1283.026217140291,
+      "write_ops_per_s": 547.7511973222221,
+      "read_latency_ms": {
+        "n": 25712,
+        "p50": 2.455991999795515,
+        "p95": 10.167300999910367,
+        "p99": 59.94402299984358,
+        "mean": 4.9603440652626,
+        "max": 86.99405100014701
+      },
+      "write_latency_ms": {
+        "n": 10977,
+        "p50": 1.0170939999625261,
+        "p95": 3.323989999898913,
+        "p99": 56.934084000204166,
+        "mean": 2.9500301663444235,
+        "max": 68.64719599980162
+      },
+      "exhausted": false,
+      "wall_start": 1793430647.517777,
+      "wall_end": 1793430667.5597627
+    },
+    {
+      "target": "cassandra",
+      "workload": "write100",
+      "read_share": 0.0,
+      "clients": 8,
+      "elapsed_s": 20.03427747600017,
+      "ops": 127841,
+      "ops_per_s": 6381.113576626142,
+      "read_ops_per_s": 0.0,
+      "write_ops_per_s": 6381.113576626142,
+      "read_latency_ms": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null,
+        "mean": null,
+        "max": null
+      },
+      "write_latency_ms": {
+        "n": 127841,
+        "p50": 0.7350470000346832,
+        "p95": 1.3533739997910743,
+        "p99": 18.855012999665632,
+        "mean": 1.2495467907321347,
+        "max": 561.5469979998124
+      },
+      "exhausted": false,
+      "wall_start": 1793430669.5209892,
+      "wall_end": 1793430689.557187
+    }
+  ],
+  "workload_setup": {
+    "clients": 8,
+    "duration_s": 20,
+    "scenario": "30d"
+  }
+}

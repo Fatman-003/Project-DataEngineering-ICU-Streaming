@@ -1,0 +1,92 @@
+# Isolated storage benchmark: TimescaleDB (main module) vs Apache Cassandra (alternative module).
+# Own compose project, own network, own ports, own volumes. It never touches the demo pipeline
+# (icu-kafka, icu-flink-*, icu-db, icu-storage-writer) nor the Flink/KStreams bench (icu-bench).
+# No Kafka here: it measures the two databases only (write throughput, read and time-series aggregation).
+name: icu-dbbench
+
+x-db-limits: &db-limits
+  cpus: 2.0
+  mem_limit: 2g
+
+services:
+  # ---- Main module: the repo's TimescaleDB image + the repo's schema, unchanged (mounted read-only). The running
+  # system's schema is the server's Flyway migrations V0..V5, applied by timescaledb/100_repo_migrations.sh. ----
+  timescaledb:
+    <<: *db-limits
+    image: timescale/timescaledb:2.30.2-pg17
+    container_name: icu-dbbench-timescaledb
+    environment:
+      POSTGRES_DB: icu
+      POSTGRES_USER: icu_app
+      POSTGRES_PASSWORD: icu-dbbench-local
+      # timescaledb-tune sizes shared_buffers/work_mem to the same budget Cassandra gets.
+      TS_TUNE_MEMORY: 2GB
+      TS_TUNE_NUM_CPUS: "2"
+    # The repo's 1-hour chunks give 720 chunks for 30 days, each a table with its own indexes; a whole-table TRUNCATE
+    # or a 30-day query locks all of them. TimescaleDB's guidance is max_locks_per_transaction >= 2 x chunks touched.
+    command: ["postgres", "-c", "max_locks_per_transaction=2048"]
+    ports:
+      - "127.0.0.1:25432:5432"
+    volumes:
+      # Mounted beside the image's init scripts, not over them, so timescaledb-tune still runs.
+      - ../server/src/main/resources/db/migration:/repo-migrations:ro
+      - ./timescaledb/100_repo_migrations.sh:/docker-entrypoint-initdb.d/100_repo_migrations.sh:ro
+      - ts-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U icu_app -d icu"]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+    networks: [dbbench]
+
+  # ---- Alternative module: Apache Cassandra, single node, same CPU/RAM budget ----
+  cassandra:
+    <<: *db-limits
+    image: cassandra:5.0.4
+    container_name: icu-dbbench-cassandra
+    environment:
+      CASSANDRA_CLUSTER_NAME: icu-dbbench
+      CASSANDRA_DC: dc1
+      CASSANDRA_ENDPOINT_SNITCH: GossipingPropertyFileSnitch
+      MAX_HEAP_SIZE: 1G
+      HEAP_NEWSIZE: 256M
+    ports:
+      - "127.0.0.1:29042:9042"
+    volumes:
+      - cass-data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 60
+    networks: [dbbench]
+
+  # ---- Load generator / query runner. Runs on the bench network, so no Windows port-forwarding
+  # overhead and the same client CPU budget for both databases. ----
+  client:
+    profiles: [client]
+    build:
+      context: ./client
+    image: icu-dbbench-client:1
+    container_name: icu-dbbench-client
+    cpus: 4.0
+    mem_limit: 2g
+    working_dir: /bench
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+      BENCH_IN_CONTAINER: "1"
+    volumes:
+      - ..:/repo:ro
+      - .:/bench
+    networks: [dbbench]
+
+networks:
+  dbbench:
+    name: icu-dbbench
+
+volumes:
+  ts-data:
+    name: icu-dbbench-ts-data
+  cass-data:
+    name: icu-dbbench-cass-data
