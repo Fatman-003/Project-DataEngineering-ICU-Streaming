@@ -22,3 +22,4 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | 2 | `jobs/spark/{wide_logic,parse_step,q_wide}.py`, `tests/spark/test_wide_logic.py` | Viết logic Q_wide dùng lại module Flink, test parity với operator Flink thật, chạy so sánh trên Kafka | Review; quyết định D16–D19 |
 | 3 | `jobs/spark/{window_logic,q_window}.py`, `tests/spark/test_window_logic.py` | Viết Q_window, test so với Welford của Flink, chạy so sánh catch-up và live | Review; D20–D21 |
 | 4 | `jobs/spark/{alert_logic,q_alert}.py`, `tests/spark/test_alert_logic.py` | Viết Q_alert, chạy lại 27 test cảnh báo có sẵn trên logic Spark, so sánh live 3 kịch bản | Review; D22 |
+| 5 | `bench/{collect,reference,compare}.py`, `bench/requirements.txt`, `tests/bench/test_reference.py` | Viết công cụ thu dữ liệu, ground truth độc lập và so sánh; chạy trên 3 kịch bản | Review; D23–D24 |

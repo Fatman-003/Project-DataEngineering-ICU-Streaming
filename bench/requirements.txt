@@ -1,0 +1,6 @@
+# Benchmark/analysis tools only (host side); the demo itself needs ../requirements.txt.
+-r ../requirements.txt
+pandas==2.3.3
+pyarrow==22.0.0
+numpy==2.3.5
+matplotlib==3.11.2

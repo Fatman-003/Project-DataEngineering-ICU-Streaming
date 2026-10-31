@@ -23,3 +23,9 @@ Thumbs.db
 
 # Data files
 *.parquet
+
+# Benchmark raw results; only the summaries and plots are tracked.
+bench/results/*
+!bench/results/summary.json
+!bench/results/summary.md
+!bench/results/plots/

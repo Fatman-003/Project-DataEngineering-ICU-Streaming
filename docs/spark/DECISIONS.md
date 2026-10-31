@@ -308,3 +308,32 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 - **Chi phí.** Q_wide và Q_alert cùng parse/validate RAW bằng Python, nên chi phí
   này bị trả hai lần. Đây là hệ quả của kiến trúc nhiều query trong plan, và cần
   nêu khi so tài nguyên ở E2/E3.
+
+## D23. Ground truth tính từ RAW đã thu, theo thứ tự offset
+
+- **Bối cảnh.** Plan §9.1 đề xuất sinh lại event bằng `demo_events(...)`. Nhưng
+  `run_demo` có `skip_missed_ticks`: khi producer bị trễ, nó **bỏ tick**, nên input
+  thật có thể khác input sinh lại.
+- **Lựa chọn.** `bench/reference.py` tính kỳ vọng từ chính các bản ghi RAW mà
+  `bench/collect.py` đọc từ Kafka, theo thứ tự offset, bằng vòng lặp Python thuần
+  (validate → dedup lần thấy đầu → ghép wide → trung bình/phương sai cửa sổ bằng
+  `statistics` → `advance_episode` tuần tự). Nó không dùng watermark, timer hay code
+  của engine nào. Unit test `tests/bench/test_reference.py` chạy cùng hàm trên output
+  của generator và khẳng định các con số kỳ vọng (1440 / 20 / 1 alert P02).
+- **Ngưỡng "đóng được" (§9.2) quy đổi theo watermark của cả hai engine.** Sample
+  thiếu field ở `T`: cần event có `event_time ≥ T + 2001 ms`. Cửa sổ kết thúc ở
+  `E`: `≥ E + 2000 ms`. Bucket MAP bắt đầu ở `S`: `≥ S + 3000 ms`. Sample đủ 4 field
+  luôn được tính, vì cả hai engine phát ngay khi đủ.
+- **Event phụ thuộc thứ tự đến.** Event có `event_time ≤ max(trước đó) − 2000 ms` có
+  thể bị coi là trễ hoặc không, tùy watermark lúc nó đến. Reference loại chúng ra và
+  báo riêng. Ví dụ đã gặp: Q_alert bật sau khi dữ liệu đã có, đọc catch-up trong một
+  batch, nên chỉ 1/3 probe late bị loại (`dropped_by_watermark.alert = 1`).
+- **Đã loại.** So Spark với Flink trực tiếp: không phát hiện được lỗi chung của cả
+  hai engine.
+
+## D24. Phạm vi so DLQ
+
+- `bench/compare.py` chỉ so DLQ có nguồn `icu.v2.chartevents`. Flink còn validate,
+  dedup và phân loại trễ cho labevents rồi ghi DLQ; Q_labs của Spark chỉ đếm (D14).
+  Số DLQ lab của từng engine được in riêng (`labevents=`). Trong mọi kịch bản demo,
+  lab đều hợp lệ nên số này bằng 0.
