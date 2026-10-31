@@ -138,7 +138,11 @@ class WideLogic:
         return min(keys) if keys else None
 
     def expire_seen(self, spark_watermark_ms, ttl_ms):
-        """Event-time stand-in for Flink's 24 h processing-time TTL (DECISIONS D11)."""
-        horizon = flink_watermark(spark_watermark_ms) - ttl_ms
-        for identity in [key for key in self.seen.keys() if self.seen.get(key) < horizon]:
-            self.seen.remove(identity)
+        expire_seen(self.seen, spark_watermark_ms, ttl_ms)
+
+
+def expire_seen(seen, spark_watermark_ms, ttl_ms):
+    """Event-time stand-in for Flink's 24 h processing-time TTL (DECISIONS D11)."""
+    horizon = flink_watermark(spark_watermark_ms) - ttl_ms
+    for identity in [key for key in seen.keys() if seen.get(key) < horizon]:
+        seen.remove(identity)

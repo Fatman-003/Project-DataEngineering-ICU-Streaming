@@ -284,3 +284,27 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
   watermark qua. Con số 24 có lẽ đến từ lần chạy không cố định `--start-time`, khi
   đồng hồ demo nối tiếp dữ liệu cũ.
 - **Hệ quả.** Phase 5 dùng định nghĩa "cửa sổ đóng được" thay cho con số trong README.
+
+## D22. Q_alert: parse riêng, chỉ nhận dòng hợp lệ, không ghi DLQ
+
+- **Bối cảnh.** Ở Flink, operator hypotension nhận stream `clean` (đã validate,
+  dedup, phân loại thời gian) và lọc còn MAP + HR/RR/SBP/SpO2. Plan §3.1 cho Q_alert
+  đọc RAW độc lập với Q_wide.
+- **Lựa chọn.** Q_alert dùng chung bước `parse_step` với Q_wide. Dòng `REJECTED` bị
+  lọc bằng `where(status = 'VALID')` trước `groupBy`. Dedup, kiểm tra trễ và lọc
+  signal nằm trong `AlertLogic.accept`. Duplicate và late bị bỏ im lặng vì Q_wide
+  đã ghi DLQ cho chúng; như vậy mỗi lỗi chỉ có một bản ghi DLQ, giống Flink.
+- **Logic.** `AlertLogic` chép lại `process_element`/`on_timer` của
+  `flink_hypotension`, gọi các hàm dùng chung `bucket_add`, `median_map` và
+  `advance_episode`. Timer của bucket `T = start + 999` được chốt khi watermark Spark
+  `> T` (D8). Episode lưu dạng JSON như Flink.
+- **Kiểm chứng.** `tests/spark/test_alert_logic.py` chạy lại **nguyên văn** 27 test
+  của `test_alarm_quality.py` và `test_hypotension_context.py` (gồm các ca A–K
+  trong `ALERT_RULES_AND_FALSE_ALARM_MANAGEMENT.md`) trên `AlertLogic`, thông qua
+  một fixture có cùng giao diện với fixture Flink. Hai test bị bỏ qua vì chỉ kiểm
+  tra cách nối dây của PyFlink (`MapStateDescriptor` TTL, `filter/key_by/uid`).
+  `accept(..., deduplicate=False)` chỉ dùng cho fixture, để mô phỏng
+  `process_element` khi không có operator dedup phía trước.
+- **Chi phí.** Q_wide và Q_alert cùng parse/validate RAW bằng Python, nên chi phí
+  này bị trả hai lần. Đây là hệ quả của kiến trúc nhiều query trong plan, và cần
+  nêu khi so tài nguyên ở E2/E3.
