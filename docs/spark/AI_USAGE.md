@@ -15,4 +15,6 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | Chuẩn bị | `server/Dockerfile`, `docker/flink/Dockerfile`, `docker/compose.yaml` (biến tùy chọn `MAVEN_MIRROR`) | Chẩn đoán lỗi 429 của Maven Central và viết bản sửa | Duyệt bản sửa |
 | 0 | `docker/spark/Dockerfile` | Chọn và pin phiên bản (Spark, Python, jar, pip) kèm checksum | Chọn Spark 4.1.3 trong các phương án được đưa ra |
 | 0 | `jobs/spark/spikes/spike.py` | Viết và chạy spike S1–S6, thêm phân tích F1 | Review bằng chứng |
-| 0 | `docs/spark/SPIKE_FINDINGS.md`, `docs/spark/DECISIONS.md` | Soạn từ output spike | Quyết định D1 (baseline), D2 (phiên bản), D5 (nhãn), D10 (đang chờ) |
+| 0 | `docs/spark/SPIKE_FINDINGS.md`, `docs/spark/DECISIONS.md` | Soạn từ output spike | Quyết định D1 (baseline), D2 (phiên bản), D5 (nhãn), D10 (fetch wait) |
+| 1 | `jobs/spark/{spark_config,spark_topics,records,metrics_listener,q_labs,main}.py`, service `icu-spark` trong `docker/compose.yaml`, `docker/compose.bench.yaml` | Viết code, build image, kiểm tra healthcheck và Spark UI | Review; duyệt ngân sách tài nguyên D13 |
+| 1 | `tests/spark/test_records.py` | Viết test cho envelope nguồn, key/header sink và cấu hình | Review |

@@ -133,18 +133,21 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 - **Lưu ý vận hành.** Số partition gắn vào checkpoint; đổi số này thì phải xóa
   checkpoint.
 
-## D10. `kafka.fetch.max.wait.ms` của source Spark — **chờ quyết định**
+## D10. `kafka.fetch.max.wait.ms=10` cho source Spark
 
 - **Bối cảnh.** F1: mỗi micro-batch mất khoảng 500 ms chỉ để chờ fetch ở cuối
   range offset (mặc định `fetch.max.wait.ms=500`), kể cả query không dùng Python.
   Đặt `kafka.fetch.max.wait.ms=10` thì batch stateful giảm từ 829 ms xuống 402 ms.
   KafkaSource của Flink poll liên tục nên không chịu khoản chờ này cho mỗi bản ghi.
-- **Đề xuất.** Cấu hình chuẩn đặt `kafka.fetch.max.wait.ms=10` qua biến
-  `SPARK_KAFKA_FETCH_MAX_WAIT_MS`. Đây là cấu hình client Kafka thông thường,
-  không phải viết lại logic. Ở E2, chạy thêm một biến thể dùng mặc định 500 ms
-  để báo cáo minh bạch ảnh hưởng của nó.
-- **Phương án khác.** Giữ mặc định 500 ms. Khi đó so sánh latency sẽ chủ yếu đo
-  một tham số client chứ không đo engine.
+- **Lựa chọn.** Cấu hình chuẩn đặt `kafka.fetch.max.wait.ms=10` qua biến
+  `SPARK_KAFKA_FETCH_MAX_WAIT_MS` (mặc định 10). Đây là cấu hình client Kafka
+  thông thường, không phải viết lại logic. Ở E2, chạy thêm một biến thể dùng
+  mặc định 500 ms để báo cáo minh bạch ảnh hưởng của nó. (Người dùng đồng ý
+  tiếp tục theo đề xuất.)
+- **Lý do.** Spark chỉ fetch khi range offset của batch có dữ liệu, nên giá trị
+  nhỏ không gây poll bận khi rảnh.
+- **Đã loại.** Giữ mặc định 500 ms: so sánh latency khi đó chủ yếu đo một tham
+  số client chứ không đo engine.
 
 ## D11. TTL dedup theo event time
 
@@ -155,3 +158,50 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 - **Lý do.** Trong mọi kịch bản demo và benchmark (tối đa vài chục phút event
   time), không mục nào hết hạn ở cả hai engine, nên kết quả dedup giống nhau.
   Khác biệt chỉ xuất hiện khi replay dữ liệu cũ hơn 24 giờ; ghi vào mục giới hạn.
+
+## D12. Quy tắc key/header của sink viết lại trong `records.py`
+
+- **Bối cảnh.** Mọi sink Flink dùng `DeadLetterSerializationSchema` (Java). Key
+  là `stay_id`, nếu không có thì lần lượt `mapped_stay_id`, `kafka_key`, `dlq_id`;
+  header lấy theo field. Python không import được code Java.
+- **Lựa chọn.** `records.kafka_record` viết lại **riêng phần chọn key** (khoảng
+  10 dòng). Header lấy từ `business_contract.headers`, vốn cho cùng tên, cùng thứ
+  tự với Java. `records.source_record` dựng envelope nguồn giống
+  `KafkaMetadataDeserializer` để `parse_and_validate`/`dlq.rejection` dùng chung
+  nhận đúng input. Cả hai được unit test trong `tests/spark/test_records.py`.
+- **Lý do.** Đây là phần duy nhất không có bản Python dùng chung; toàn bộ logic
+  nghiệp vụ vẫn import từ `jobs/flink/`.
+
+## D13. Ngân sách tài nguyên khi benchmark
+
+- **Bối cảnh.** Plan yêu cầu tổng CPU/RAM bằng nhau cho hai engine
+  (`docker/compose.bench.yaml`). Ví dụ trong plan: Flink JM 0,5 CPU/1 GB + TM
+  1,5 CPU/2 GB; Spark 2 CPU/3 GB.
+- **Lựa chọn.** Flink JM 0,5 CPU/1 GB + TM 1,5 CPU/2,5 GB; Spark 2 CPU/3,5 GB
+  (driver `--driver-memory 2g`). Tổng mỗi bên: 2 CPU/3,5 GB.
+- **Lý do.** TaskManager đặt `taskmanager.memory.process.size: 2048m`. Python
+  worker là process riêng, được Flink tính vào managed memory nhưng kernel tính
+  vào giới hạn container, nên giới hạn đúng 2 GB dễ bị OOM-kill. Spark được cộng
+  thêm cùng mức để tổng hai bên vẫn bằng nhau. Sẽ kiểm tra không có OOM ở Phase 6.
+- **Đã loại.** Đúng ví dụ của plan (Flink 3 GB, Spark 3 GB): TM không có khoảng dư.
+
+## D14. Q_labs làm sớm ở Phase 1; đếm bằng `foreachBatch`
+
+- **Bối cảnh.** Healthcheck của Phase 1 cần ít nhất một query thật đang chạy.
+  Plan đặt Q_labs ở Phase 2.
+- **Lựa chọn.** Làm Q_labs ngay ở Phase 1: `mapInPandas` gọi
+  `parse_and_validate(source, "labevents")`, rồi `foreachBatch` ghi số đếm theo
+  `status`/`error_type` của từng batch vào `/opt/icu/metrics/labs_counts.jsonl`.
+  Không ghi business topic, đúng như Flink chỉ `print`.
+- **Lý do.** `foreachBatch` chỉ dùng cho metric, không cho output business, nên
+  không ảnh hưởng tính at-least-once của các topic so sánh.
+- **Ghi chú.** Q_labs không dedup và không phân loại event-time như nhánh lab
+  của Flink. Không có output business nên điều này không ảnh hưởng E1.
+
+## D15. Tên module trong `jobs/spark/`
+
+- **Bối cảnh.** `services/storage_writer/config.py` và `jobs/spark/config.py`
+  cùng tên `config`. Khi test chèn cả hai thư mục vào `sys.path`, module này che
+  module kia, làm 3 file test cũ lỗi import.
+- **Lựa chọn.** Đặt tên `spark_config.py` và `spark_topics.py`. Các module còn
+  lại (`records`, `metrics_listener`, `q_*`, `main`) không trùng tên nào trong repo.

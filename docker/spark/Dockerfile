@@ -15,7 +15,7 @@ RUN curl --fail --location --retry 3 \
     && tar -xzf /tmp/python.tar.gz -C /opt \
     && rm /tmp/python.tar.gz \
     && /opt/python/bin/python3 -m pip install --no-cache-dir \
-       pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.5 \
+       pandas==2.3.3 pyarrow==22.0.0 numpy==2.3.5 confluent-kafka==2.16.0 \
     && /opt/python/bin/python3 -m pip check
 
 # Kafka source/sink for Structured Streaming plus its transitive runtime jars
@@ -51,3 +51,5 @@ ENV PATH="/opt/python/bin:/opt/spark/bin:${PATH}" \
 
 USER spark
 WORKDIR /opt/icu
+EXPOSE 4040
+CMD ["/bin/sh", "-c", "exec spark-submit --master \"${SPARK_MASTER:-local[1]}\" --driver-memory \"${SPARK_DRIVER_MEMORY:-2g}\" /opt/icu/jobs/spark/main.py"]

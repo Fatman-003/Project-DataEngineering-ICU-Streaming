@@ -1,0 +1,18 @@
+# Benchmark-only override: the same total CPU/RAM budget for each engine.
+#   docker compose -f docker/compose.yaml -f docker/compose.bench.yaml --env-file .env ...
+# Flink: JobManager 0.5 CPU / 1 GB + TaskManager 1.5 CPU / 2.5 GB = 2 CPU / 3.5 GB.
+# Spark: one container (driver JVM + Python workers)            = 2 CPU / 3.5 GB.
+# Each limit leaves headroom above the JVM setting (TaskManager process size
+# 2048m, Spark driver 2g) because Python workers are separate processes that
+# the JVM budgets for but the kernel counts against the container limit.
+# See docs/spark/DECISIONS.md D13.
+services:
+  icu-flink-jobmanager:
+    cpus: 0.5
+    mem_limit: 1g
+  icu-flink-taskmanager:
+    cpus: 1.5
+    mem_limit: 2560m
+  icu-spark:
+    cpus: 2.0
+    mem_limit: 3584m

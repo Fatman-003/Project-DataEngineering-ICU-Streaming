@@ -255,6 +255,46 @@ services:
           /opt/flink/bin/flink run -d -py /opt/flink/jobs/runtime_pipeline.py --offset earliest
         fi
 
+  # Spark Structured Streaming alternative; opt-in with `--profile spark`.
+  # Reads the same RAW topics as Flink and writes only icu.alt.spark.* topics.
+  icu-spark:
+    profiles: ["spark"]
+    build:
+      context: ..
+      dockerfile: docker/spark/Dockerfile
+      args:
+        MAVEN_MIRROR: ${MAVEN_MIRROR:-https://repo.maven.apache.org/maven2}
+    image: icu-spark:4.1.3-v1
+    container_name: icu-spark
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4040:4040"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: icu-kafka:9094
+      ICU_PATIENT_CONFIG: /opt/icu/config/demo_patients.yaml
+      SPARK_MASTER: ${SPARK_MASTER:-local[1]}
+      SPARK_SHUFFLE_PARTITIONS: ${SPARK_SHUFFLE_PARTITIONS:-1}
+      SPARK_TRIGGER: ${SPARK_TRIGGER:-}
+      SPARK_KAFKA_FETCH_MAX_WAIT_MS: ${SPARK_KAFKA_FETCH_MAX_WAIT_MS:-10}
+      SPARK_DRIVER_MEMORY: ${SPARK_DRIVER_MEMORY:-2g}
+      TZ: UTC
+    volumes:
+      - ../jobs/flink:/opt/icu/jobs/flink:ro
+      - ../config/demo_patients.yaml:/opt/icu/config/demo_patients.yaml:ro
+      - icu-spark-checkpoints:/opt/icu/checkpoints
+      - icu-spark-metrics:/opt/icu/metrics
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/icu-spark-ready && curl --fail --silent http://localhost:4040/api/v1/applications >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 20s
+    depends_on:
+      icu-kafka:
+        condition: service_healthy
+      icu-init:
+        condition: service_completed_successfully
+
 networks:
   default:
     name: icu-net
@@ -266,3 +306,7 @@ volumes:
     name: icu-db-data
   icu-flink-checkpoints:
     name: icu-flink-checkpoints
+  icu-spark-checkpoints:
+    name: icu-spark-checkpoints
+  icu-spark-metrics:
+    name: icu-spark-metrics
