@@ -142,12 +142,26 @@ class Bench:
                 return all(v["status"] == "RUNNING" for v in json.load(response)["vertices"])
         self.wait(running, 180, "Flink job RUNNING")
 
+    def compose_with_env(self, env):
+        """`sudo` resets the environment, so compose interpolation variables go through `env`."""
+        assignments = [f"{key}={value}" for key, value in env.items()]
+        if self.docker[0] == "sudo":
+            return ["sudo", "env", *assignments, *self.compose[1:]]
+        return ["env", *assignments, *self.compose]
+
     def start_spark(self, spec):
         env = {"SPARK_TRIGGER": "" if spec["trigger"] == "default" else spec["trigger"].replace("s", " seconds"),
                "SPARK_KAFKA_FETCH_MAX_WAIT_MS": str(spec.get("fetch_wait_ms", 10))}
-        self.sh([*self.compose, "up", "-d", "--no-deps", "icu-spark"], env=env)
+        self.sh([*self.compose_with_env(env), "up", "-d", "--no-deps", "icu-spark"])
+        actual = dict(line.split("=", 1) for line in self.sh(
+            [*self.docker, "inspect", "-f", "{{range .Config.Env}}{{println .}}{{end}}", "icu-spark"]
+        ).stdout.splitlines() if "=" in line)
+        mismatched = {key: actual.get(key) for key, value in env.items() if actual.get(key, "") != value}
+        if mismatched:
+            raise RuntimeError(f"icu-spark started with the wrong settings: {mismatched}, expected {env}")
         self.wait(lambda: self.sh([*self.docker, "inspect", "-f", "{{.State.Health.Status}}", "icu-spark"],
                                   check=False).stdout.strip() == "healthy", 300, "icu-spark healthy")
+        return env
 
     def wait(self, predicate, timeout, what):
         deadline = time.monotonic() + timeout
@@ -218,7 +232,10 @@ class Bench:
             timeline["preload"] = self.preload(out_dir)
             timeline["preload_done"] = now_ms()
         for engine in engines:
-            self.start_flink() if engine == "flink" else self.start_spark(spec)
+            if engine == "flink":
+                self.start_flink()
+            else:
+                timeline["spark_env"] = self.start_spark(spec)
         timeline["engine_ready"] = now_ms()
         containers = [c for e in engines for c in ENGINE_CONTAINERS[e]]
         sampler = subprocess.Popen([sys.executable, str(PROJECT / "bench/resources.py"), "--out",
