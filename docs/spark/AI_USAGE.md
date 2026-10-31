@@ -20,3 +20,4 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | 1 | `tests/spark/test_records.py` | Viết test cho envelope nguồn, key/header sink và cấu hình | Review |
 | 2 | `jobs/spark/spikes/spike_state.py`, `SPIKE_FINDINGS.md` S7–S9 | Viết và chạy spike bổ sung về state API | Review |
 | 2 | `jobs/spark/{wide_logic,parse_step,q_wide}.py`, `tests/spark/test_wide_logic.py` | Viết logic Q_wide dùng lại module Flink, test parity với operator Flink thật, chạy so sánh trên Kafka | Review; quyết định D16–D19 |
+| 3 | `jobs/spark/{window_logic,q_window}.py`, `tests/spark/test_window_logic.py` | Viết Q_window, test so với Welford của Flink, chạy so sánh catch-up và live | Review; D20–D21 |

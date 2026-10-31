@@ -252,3 +252,35 @@ Bằng chứng spike nằm trong [`SPIKE_FINDINGS.md`](SPIKE_FINDINGS.md).
 - **Lý do và giới hạn.** `event_id` của simulator chứa `stay_id`, nên hai cách cho
   cùng kết quả. Chỉ khi hai bệnh nhân gửi trùng `event_id` thì Flink báo
   `DUPLICATE_EVENT` còn Spark không. Ghi vào mục giới hạn.
+
+## D20. Q_window: aggregate native của Spark, đọc telemetry của Spark
+
+- **Bối cảnh.** Flink tính cửa sổ trên wide stream bằng accumulator Welford
+  `[count, mean, M2]` (`window_aggregates.py`), rồi `aggregate_result` suy ra
+  `avg_*` và `var_* = M2 / count` (khi `count ≥ 2`).
+- **Lựa chọn.** Q_window đọc `icu.alt.spark.telemetry` (thêm một chặng Kafka, đo
+  riêng ở E2). Dùng `groupBy(window(sample_ts, "5 minutes", "1 minute"), stay_id)`
+  với `count`, `avg`, `var_pop` native cho từng field, output mode `append`. Sau đó
+  `window_logic.accumulator` dựng lại `[count, mean, var_pop × count]` và gọi
+  `aggregate_result` dùng chung để format (`producer=icu-spark`).
+- **Lý do.** Phần tính toán số học là của engine (đúng mục tiêu so sánh engine),
+  còn mọi quy tắc contract (null khi thiếu, `var` chỉ khi `count ≥ 2`, danh tính
+  `message_id`) vẫn dùng chung. Sai số so với Welford của Flink đo được tối đa
+  khoảng `9e-14`, nằm trong ngưỡng `1e-9` của plan.
+- **Đã loại.** Gom giá trị rồi gọi `add_record` trong Python: lặp lại thuật toán
+  của Flink thay vì đo engine, và tốn thêm một bước Python.
+- **Khác biệt có thể có.** Sample thiếu field mà Flink chốt bằng timer có
+  timestamp `T ≤ watermark`. Ở Flink, sample đó vẫn vào các cửa sổ chưa đóng. Ở
+  Spark, Q_window có watermark riêng dựa trên max `sample_ts` của topic telemetry,
+  nên sample chốt muộn có thể bị loại nếu `T ≤ max − 2 s`. Kịch bản chuẩn không có
+  sample thiếu field nên không gặp; báo riêng nếu E1–E4 gặp.
+
+## D21. Số cửa sổ kỳ vọng của kịch bản chuẩn là 20, không phải 24
+
+- **Bối cảnh.** README ghi "vitals_5m = 24" cho kịch bản 6 phút.
+- **Quan sát.** Với `--start-time` cố định (dữ liệu 20:00:00–20:05:59), cả Flink và
+  Spark đều đóng đúng 5 cửa sổ mỗi bệnh nhân (kết thúc 20:01 đến 20:05) = 20. Các
+  cửa sổ kết thúc 20:06–20:10 là phần "tail" (§9.2), chỉ đóng khi có dữ liệu mới đẩy
+  watermark qua. Con số 24 có lẽ đến từ lần chạy không cố định `--start-time`, khi
+  đồng hồ demo nối tiếp dữ liệu cũ.
+- **Hệ quả.** Phase 5 dùng định nghĩa "cửa sổ đóng được" thay cho con số trong README.
