@@ -23,3 +23,4 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | 3 | `jobs/spark/{window_logic,q_window}.py`, `tests/spark/test_window_logic.py` | Viết Q_window, test so với Welford của Flink, chạy so sánh catch-up và live | Review; D20–D21 |
 | 4 | `jobs/spark/{alert_logic,q_alert}.py`, `tests/spark/test_alert_logic.py` | Viết Q_alert, chạy lại 27 test cảnh báo có sẵn trên logic Spark, so sánh live 3 kịch bản | Review; D22 |
 | 5 | `bench/{collect,reference,compare}.py`, `bench/requirements.txt`, `tests/bench/test_reference.py` | Viết công cụ thu dữ liệu, ground truth độc lập và so sánh; chạy trên 3 kịch bản | Review; D23–D24 |
+| 6 | `bench/{run,latency,resources,preload,summarize,plots}.py`, `docker/compose.bench.yaml`, `bench/results/{summary.json,summary.md,plots/}` | Viết bộ điều phối benchmark, chạy E1–E4 (phát hiện và sửa lỗi `sudo` làm mất biến môi trường), tổng hợp số liệu và vẽ biểu đồ | Duyệt đổi mức tải (D25) và ma trận rút gọn (D26) |

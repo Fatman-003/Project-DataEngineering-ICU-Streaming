@@ -595,6 +595,316 @@
       null
     ]
   },
+  "E2|flink|speed10|default": {
+    "experiment": "E2",
+    "engine": "flink",
+    "profile": "speed10",
+    "trigger": "default",
+    "runs": [
+      "E2/flink_speed10_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 460.0,
+          "min": 460.0,
+          "max": 460.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 2992.0,
+          "min": 2992.0,
+          "max": 2992.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 4376.0,
+          "min": 4376.0,
+          "max": 4376.0,
+          "n": 1
+        },
+        "max": {
+          "median": 4748,
+          "min": 4748,
+          "max": 4748,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 608.0,
+          "min": 608.0,
+          "max": 608.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 3174.0,
+          "min": 3174.0,
+          "max": 3174.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 4468.0,
+          "min": 4468.0,
+          "max": 4468.0,
+          "n": 1
+        },
+        "max": {
+          "median": 4468,
+          "min": 4468,
+          "max": 4468,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 702.0,
+          "min": 702.0,
+          "max": 702.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 3190.799999999999,
+          "min": 3190.799999999999,
+          "max": 3190.799999999999,
+          "n": 1
+        },
+        "p99": {
+          "median": 4420.5599999999995,
+          "min": 4420.5599999999995,
+          "max": 4420.5599999999995,
+          "n": 1
+        },
+        "max": {
+          "median": 4728,
+          "min": 4728,
+          "max": 4728,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 114.362049689441,
+      "min": 114.362049689441,
+      "max": 114.362049689441,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1500.1599988937378,
+      "min": 1500.1599988937378,
+      "max": 1500.1599988937378,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        9,
+        9
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 8,
+        "VALUE_ERROR": 8,
+        "LATE_EVENT": 8
+      }
+    ],
+    "dropped_by_watermark": [
+      null
+    ],
+    "producer": [
+      null
+    ]
+  },
+  "E2|flink|speed5|default": {
+    "experiment": "E2",
+    "engine": "flink",
+    "profile": "speed5",
+    "trigger": "default",
+    "runs": [
+      "E2/flink_speed5_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 386.0,
+          "min": 386.0,
+          "max": 386.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 538.0,
+          "min": 538.0,
+          "max": 538.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 1050.0,
+          "min": 1050.0,
+          "max": 1050.0,
+          "n": 1
+        },
+        "max": {
+          "median": 1720,
+          "min": 1720,
+          "max": 1720,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 517.0,
+          "min": 517.0,
+          "max": 517.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 774.0,
+          "min": 774.0,
+          "max": 774.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 784.0,
+          "min": 784.0,
+          "max": 784.0,
+          "n": 1
+        },
+        "max": {
+          "median": 784,
+          "min": 784,
+          "max": 784,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 348.0,
+          "min": 348.0,
+          "max": 348.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 485.4,
+          "min": 485.4,
+          "max": 485.4,
+          "n": 1
+        },
+        "p99": {
+          "median": 502.68,
+          "min": 502.68,
+          "max": 502.68,
+          "n": 1
+        },
+        "max": {
+          "median": 507,
+          "min": 507,
+          "max": 507,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 73.83391304347826,
+      "min": 73.83391304347826,
+      "max": 73.83391304347826,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1480.85599899292,
+      "min": 1480.85599899292,
+      "max": 1480.85599899292,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        5,
+        5
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 4,
+        "VALUE_ERROR": 4,
+        "LATE_EVENT": 4
+      }
+    ],
+    "dropped_by_watermark": [
+      null
+    ],
+    "producer": [
+      null
+    ]
+  },
   "E2|spark|normal|1s": {
     "experiment": "E2",
     "engine": "spark",
@@ -1300,6 +1610,946 @@
       }
     }
   },
+  "E2|spark|speed10|5s": {
+    "experiment": "E2",
+    "engine": "spark",
+    "profile": "speed10",
+    "trigger": "5s",
+    "runs": [
+      "E2/spark_speed10_5s_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 3232.0,
+          "min": 3232.0,
+          "max": 3232.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5473.049999999999,
+          "min": 5473.049999999999,
+          "max": 5473.049999999999,
+          "n": 1
+        },
+        "p99": {
+          "median": 5757.01,
+          "min": 5757.01,
+          "max": 5757.01,
+          "n": 1
+        },
+        "max": {
+          "median": 6097,
+          "min": 6097,
+          "max": 6097,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 13825.0,
+          "min": 13825.0,
+          "max": 13825.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 15900.0,
+          "min": 15900.0,
+          "max": 15900.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 16179.0,
+          "min": 16179.0,
+          "max": 16179.0,
+          "n": 1
+        },
+        "max": {
+          "median": 16179,
+          "min": 16179,
+          "max": 16179,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 8168.0,
+          "min": 8168.0,
+          "max": 8168.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 10059.0,
+          "min": 10059.0,
+          "max": 10059.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 10079.8,
+          "min": 10079.8,
+          "max": 10079.8,
+          "n": 1
+        },
+        "max": {
+          "median": 10085,
+          "min": 10085,
+          "max": 10085,
+          "n": 1
+        }
+      },
+      "window_q_wide": {
+        "p50": {
+          "median": 3223.0,
+          "min": 3223.0,
+          "max": 3223.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5307.0,
+          "min": 5307.0,
+          "max": 5307.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 5692.0,
+          "min": 5692.0,
+          "max": 5692.0,
+          "n": 1
+        },
+        "max": {
+          "median": 5692,
+          "min": 5692,
+          "max": 5692,
+          "n": 1
+        }
+      },
+      "window_q_window": {
+        "p50": {
+          "median": 10583.0,
+          "min": 10583.0,
+          "max": 10583.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 10782.0,
+          "min": 10782.0,
+          "max": 10782.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 10891.0,
+          "min": 10891.0,
+          "max": 10891.0,
+          "n": 1
+        },
+        "max": {
+          "median": 10891,
+          "min": 10891,
+          "max": 10891,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 50.57838414634146,
+      "min": 50.57838414634146,
+      "max": 50.57838414634146,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1539.0719995498657,
+      "min": 1539.0719995498657,
+      "max": 1539.0719995498657,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        9,
+        9
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 8,
+        "VALUE_ERROR": 8
+      }
+    ],
+    "dropped_by_watermark": [
+      {
+        "wide": 8,
+        "alert": 8
+      }
+    ],
+    "producer": [
+      null
+    ],
+    "spark_batches": {
+      "batches": {
+        "median": 61,
+        "min": 61,
+        "max": 61,
+        "n": 1
+      },
+      "median_batch_ms": {
+        "median": 821,
+        "min": 821,
+        "max": 821,
+        "n": 1
+      },
+      "max_batch_ms": {
+        "median": 1742,
+        "min": 1742,
+        "max": 1742,
+        "n": 1
+      },
+      "max_processed_rows_per_s": {
+        "median": 1684.4,
+        "min": 1684.4,
+        "max": 1684.4,
+        "n": 1
+      }
+    }
+  },
+  "E2|spark|speed10|default": {
+    "experiment": "E2",
+    "engine": "spark",
+    "profile": "speed10",
+    "trigger": "default",
+    "runs": [
+      "E2/spark_speed10_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 1496.0,
+          "min": 1496.0,
+          "max": 1496.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 2157.0,
+          "min": 2157.0,
+          "max": 2157.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 2852.0,
+          "min": 2852.0,
+          "max": 2852.0,
+          "n": 1
+        },
+        "max": {
+          "median": 4157,
+          "min": 4157,
+          "max": 4157,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 4411.0,
+          "min": 4411.0,
+          "max": 4411.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5371.0,
+          "min": 5371.0,
+          "max": 5371.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 6168.0,
+          "min": 6168.0,
+          "max": 6168.0,
+          "n": 1
+        },
+        "max": {
+          "median": 6168,
+          "min": 6168,
+          "max": 6168,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 2577.0,
+          "min": 2577.0,
+          "max": 2577.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 3850.7999999999993,
+          "min": 3850.7999999999993,
+          "max": 3850.7999999999993,
+          "n": 1
+        },
+        "p99": {
+          "median": 4299.76,
+          "min": 4299.76,
+          "max": 4299.76,
+          "n": 1
+        },
+        "max": {
+          "median": 4412,
+          "min": 4412,
+          "max": 4412,
+          "n": 1
+        }
+      },
+      "window_q_wide": {
+        "p50": {
+          "median": 1382.0,
+          "min": 1382.0,
+          "max": 1382.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 2015.0,
+          "min": 2015.0,
+          "max": 2015.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 2145.0,
+          "min": 2145.0,
+          "max": 2145.0,
+          "n": 1
+        },
+        "max": {
+          "median": 2145,
+          "min": 2145,
+          "max": 2145,
+          "n": 1
+        }
+      },
+      "window_q_window": {
+        "p50": {
+          "median": 2850.0,
+          "min": 2850.0,
+          "max": 2850.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 3506.0,
+          "min": 3506.0,
+          "max": 3506.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 4186.0,
+          "min": 4186.0,
+          "max": 4186.0,
+          "n": 1
+        },
+        "max": {
+          "median": 4186,
+          "min": 4186,
+          "max": 4186,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 171.41565217391303,
+      "min": 171.41565217391303,
+      "max": 171.41565217391303,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1729.5359992980957,
+      "min": 1729.5359992980957,
+      "max": 1729.5359992980957,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        9,
+        9
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 8,
+        "VALUE_ERROR": 8
+      }
+    ],
+    "dropped_by_watermark": [
+      {
+        "wide": 8,
+        "alert": 8
+      }
+    ],
+    "producer": [
+      null
+    ],
+    "spark_batches": {
+      "batches": {
+        "median": 273,
+        "min": 273,
+        "max": 273,
+        "n": 1
+      },
+      "median_batch_ms": {
+        "median": 1140,
+        "min": 1140,
+        "max": 1140,
+        "n": 1
+      },
+      "max_batch_ms": {
+        "median": 2381,
+        "min": 2381,
+        "max": 2381,
+        "n": 1
+      },
+      "max_processed_rows_per_s": {
+        "median": 368.7,
+        "min": 368.7,
+        "max": 368.7,
+        "n": 1
+      }
+    }
+  },
+  "E2|spark|speed5|5s": {
+    "experiment": "E2",
+    "engine": "spark",
+    "profile": "speed5",
+    "trigger": "5s",
+    "runs": [
+      "E2/spark_speed5_5s_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 3085.0,
+          "min": 3085.0,
+          "max": 3085.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5333.05,
+          "min": 5333.05,
+          "max": 5333.05,
+          "n": 1
+        },
+        "p99": {
+          "median": 5589.030000000001,
+          "min": 5589.030000000001,
+          "max": 5589.030000000001,
+          "n": 1
+        },
+        "max": {
+          "median": 5834,
+          "min": 5834,
+          "max": 5834,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 13542.0,
+          "min": 13542.0,
+          "max": 13542.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 15636.0,
+          "min": 15636.0,
+          "max": 15636.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 15647.0,
+          "min": 15647.0,
+          "max": 15647.0,
+          "n": 1
+        },
+        "max": {
+          "median": 15647,
+          "min": 15647,
+          "max": 15647,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 8657.0,
+          "min": 8657.0,
+          "max": 8657.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 10452.0,
+          "min": 10452.0,
+          "max": 10452.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 10553.6,
+          "min": 10553.6,
+          "max": 10553.6,
+          "n": 1
+        },
+        "max": {
+          "median": 10579,
+          "min": 10579,
+          "max": 10579,
+          "n": 1
+        }
+      },
+      "window_q_wide": {
+        "p50": {
+          "median": 3031.0,
+          "min": 3031.0,
+          "max": 3031.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5159.0,
+          "min": 5159.0,
+          "max": 5159.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 5302.0,
+          "min": 5302.0,
+          "max": 5302.0,
+          "n": 1
+        },
+        "max": {
+          "median": 5302,
+          "min": 5302,
+          "max": 5302,
+          "n": 1
+        }
+      },
+      "window_q_window": {
+        "p50": {
+          "median": 10495.0,
+          "min": 10495.0,
+          "max": 10495.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 10760.0,
+          "min": 10760.0,
+          "max": 10760.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 10782.0,
+          "min": 10782.0,
+          "max": 10782.0,
+          "n": 1
+        },
+        "max": {
+          "median": 10782,
+          "min": 10782,
+          "max": 10782,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 47.802839506172845,
+      "min": 47.802839506172845,
+      "max": 47.802839506172845,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1583.1039991378784,
+      "min": 1583.1039991378784,
+      "max": 1583.1039991378784,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        5,
+        5
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 4,
+        "VALUE_ERROR": 4
+      }
+    ],
+    "dropped_by_watermark": [
+      {
+        "wide": 4,
+        "alert": 4
+      }
+    ],
+    "producer": [
+      null
+    ],
+    "spark_batches": {
+      "batches": {
+        "median": 61,
+        "min": 61,
+        "max": 61,
+        "n": 1
+      },
+      "median_batch_ms": {
+        "median": 785,
+        "min": 785,
+        "max": 785,
+        "n": 1
+      },
+      "max_batch_ms": {
+        "median": 1641,
+        "min": 1641,
+        "max": 1641,
+        "n": 1
+      },
+      "max_processed_rows_per_s": {
+        "median": 905.1,
+        "min": 905.1,
+        "max": 905.1,
+        "n": 1
+      }
+    }
+  },
+  "E2|spark|speed5|default": {
+    "experiment": "E2",
+    "engine": "spark",
+    "profile": "speed5",
+    "trigger": "default",
+    "runs": [
+      "E2/spark_speed5_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 1437.0,
+          "min": 1437.0,
+          "max": 1437.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 2096.0,
+          "min": 2096.0,
+          "max": 2096.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 2808.45000000001,
+          "min": 2808.45000000001,
+          "max": 2808.45000000001,
+          "n": 1
+        },
+        "max": {
+          "median": 4092,
+          "min": 4092,
+          "max": 4092,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 4028.5,
+          "min": 4028.5,
+          "max": 4028.5,
+          "n": 1
+        },
+        "p95": {
+          "median": 4993.0,
+          "min": 4993.0,
+          "max": 4993.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 5351.0,
+          "min": 5351.0,
+          "max": 5351.0,
+          "n": 1
+        },
+        "max": {
+          "median": 5351,
+          "min": 5351,
+          "max": 5351,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 2725.0,
+          "min": 2725.0,
+          "max": 2725.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 3183.6,
+          "min": 3183.6,
+          "max": 3183.6,
+          "n": 1
+        },
+        "p99": {
+          "median": 3272.7200000000003,
+          "min": 3272.7200000000003,
+          "max": 3272.7200000000003,
+          "n": 1
+        },
+        "max": {
+          "median": 3295,
+          "min": 3295,
+          "max": 3295,
+          "n": 1
+        }
+      },
+      "window_q_wide": {
+        "p50": {
+          "median": 1607.0,
+          "min": 1607.0,
+          "max": 1607.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 2097.0,
+          "min": 2097.0,
+          "max": 2097.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 2113.0,
+          "min": 2113.0,
+          "max": 2113.0,
+          "n": 1
+        },
+        "max": {
+          "median": 2113,
+          "min": 2113,
+          "max": 2113,
+          "n": 1
+        }
+      },
+      "window_q_window": {
+        "p50": {
+          "median": 2447.5,
+          "min": 2447.5,
+          "max": 2447.5,
+          "n": 1
+        },
+        "p95": {
+          "median": 2938.0,
+          "min": 2938.0,
+          "max": 2938.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 3384.0,
+          "min": 3384.0,
+          "max": 3384.0,
+          "n": 1
+        },
+        "max": {
+          "median": 3384,
+          "min": 3384,
+          "max": 3384,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 171.05444099378883,
+      "min": 171.05444099378883,
+      "max": 171.05444099378883,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1564.6719999313354,
+      "min": 1564.6719999313354,
+      "max": 1564.6719999313354,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        5,
+        5
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 4,
+        "VALUE_ERROR": 4
+      }
+    ],
+    "dropped_by_watermark": [
+      {
+        "wide": 4,
+        "alert": 4
+      }
+    ],
+    "producer": [
+      null
+    ],
+    "spark_batches": {
+      "batches": {
+        "median": 281,
+        "min": 281,
+        "max": 281,
+        "n": 1
+      },
+      "median_batch_ms": {
+        "median": 1028,
+        "min": 1028,
+        "max": 1028,
+        "n": 1
+      },
+      "max_batch_ms": {
+        "median": 2298,
+        "min": 2298,
+        "max": 2298,
+        "n": 1
+      },
+      "max_processed_rows_per_s": {
+        "median": 153.7,
+        "min": 153.7,
+        "max": 153.7,
+        "n": 1
+      }
+    }
+  },
   "E3|flink|preload_hf200_2m|default": {
     "experiment": "E3",
     "engine": "flink",
@@ -1707,6 +2957,436 @@
         "median": 6142.7428815186095,
         "min": 6142.7428815186095,
         "max": 6142.7428815186095,
+        "n": 1
+      }
+    }
+  },
+  "E4|flink|speed10|default": {
+    "experiment": "E4",
+    "engine": "flink",
+    "profile": "speed10",
+    "trigger": "default",
+    "runs": [
+      "E4/flink_speed10_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 877.0,
+          "min": 877.0,
+          "max": 877.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 29497.69999999999,
+          "min": 29497.69999999999,
+          "max": 29497.69999999999,
+          "n": 1
+        },
+        "p99": {
+          "median": 30113.0,
+          "min": 30113.0,
+          "max": 30113.0,
+          "n": 1
+        },
+        "max": {
+          "median": 30436,
+          "min": 30436,
+          "max": 30436,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 1323.0,
+          "min": 1323.0,
+          "max": 1323.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 29720.0,
+          "min": 29720.0,
+          "max": 29720.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 30343.0,
+          "min": 30343.0,
+          "max": 30343.0,
+          "n": 1
+        },
+        "max": {
+          "median": 30343,
+          "min": 30343,
+          "max": 30343,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 764.0,
+          "min": 764.0,
+          "max": 764.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 23053.6,
+          "min": 23053.6,
+          "max": 23053.6,
+          "n": 1
+        },
+        "p99": {
+          "median": 26069.92,
+          "min": 26069.92,
+          "max": 26069.92,
+          "n": 1
+        },
+        "max": {
+          "median": 26824,
+          "min": 26824,
+          "max": 26824,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 123.12170807453417,
+      "min": 123.12170807453417,
+      "max": 123.12170807453417,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1531.3039999008179,
+      "min": 1531.3039999008179,
+      "max": 1531.3039999008179,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        9,
+        9
+      ]
+    ],
+    "duplicates_total": {
+      "median": 53,
+      "min": 53,
+      "max": 53,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 8,
+        "VALUE_ERROR": 8,
+        "LATE_EVENT": 8
+      }
+    ],
+    "dropped_by_watermark": [
+      null
+    ],
+    "producer": [
+      null
+    ],
+    "recovery": {
+      "first_output_after_restart_s": {
+        "median": 25.439,
+        "min": 25.439,
+        "max": 25.439,
+        "n": 1
+      },
+      "missing_telemetry": {
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "n": 1
+      },
+      "missing_windows": {
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "n": 1
+      }
+    }
+  },
+  "E4|spark|speed10|default": {
+    "experiment": "E4",
+    "engine": "spark",
+    "profile": "speed10",
+    "trigger": "default",
+    "runs": [
+      "E4/spark_speed10_default_r1"
+    ],
+    "all_drained": true,
+    "latency": {
+      "telemetry": {
+        "p50": {
+          "median": 1650.0,
+          "min": 1650.0,
+          "max": 1650.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 4150.0999999999985,
+          "min": 4150.0999999999985,
+          "max": 4150.0999999999985,
+          "n": 1
+        },
+        "p99": {
+          "median": 14997.090000000002,
+          "min": 14997.090000000002,
+          "max": 14997.090000000002,
+          "n": 1
+        },
+        "max": {
+          "median": 17397,
+          "min": 17397,
+          "max": 17397,
+          "n": 1
+        }
+      },
+      "window": {
+        "p50": {
+          "median": 4644.0,
+          "min": 4644.0,
+          "max": 4644.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 10060.0,
+          "min": 10060.0,
+          "max": 10060.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 22060.0,
+          "min": 22060.0,
+          "max": 22060.0,
+          "n": 1
+        },
+        "max": {
+          "median": 22060,
+          "min": 22060,
+          "max": 22060,
+          "n": 1
+        }
+      },
+      "alert": {
+        "p50": {
+          "median": 2723.0,
+          "min": 2723.0,
+          "max": 2723.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 13580.399999999994,
+          "min": 13580.399999999994,
+          "max": 13580.399999999994,
+          "n": 1
+        },
+        "p99": {
+          "median": 18216.879999999997,
+          "min": 18216.879999999997,
+          "max": 18216.879999999997,
+          "n": 1
+        },
+        "max": {
+          "median": 19376,
+          "min": 19376,
+          "max": 19376,
+          "n": 1
+        }
+      },
+      "window_q_wide": {
+        "p50": {
+          "median": 1672.0,
+          "min": 1672.0,
+          "max": 1672.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 4518.0,
+          "min": 4518.0,
+          "max": 4518.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 16505.0,
+          "min": 16505.0,
+          "max": 16505.0,
+          "n": 1
+        },
+        "max": {
+          "median": 16505,
+          "min": 16505,
+          "max": 16505,
+          "n": 1
+        }
+      },
+      "window_q_window": {
+        "p50": {
+          "median": 2977.0,
+          "min": 2977.0,
+          "max": 2977.0,
+          "n": 1
+        },
+        "p95": {
+          "median": 5542.0,
+          "min": 5542.0,
+          "max": 5542.0,
+          "n": 1
+        },
+        "p99": {
+          "median": 5555.0,
+          "min": 5555.0,
+          "max": 5555.0,
+          "n": 1
+        },
+        "max": {
+          "median": 5555,
+          "min": 5555,
+          "max": 5555,
+          "n": 1
+        }
+      }
+    },
+    "cpu_mean_pct": {
+      "median": 176.59537267080745,
+      "min": 176.59537267080745,
+      "max": 176.59537267080745,
+      "n": 1
+    },
+    "mem_peak_mib": {
+      "median": 1691.6479997634888,
+      "min": 1691.6479997634888,
+      "max": 1691.6479997634888,
+      "n": 1
+    },
+    "precision": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "recall": {
+      "telemetry": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      },
+      "windows": {
+        "median": 1.0,
+        "min": 1.0,
+        "max": 1.0,
+        "n": 1
+      }
+    },
+    "alerts_exact": [
+      [
+        9,
+        9
+      ]
+    ],
+    "duplicates_total": {
+      "median": 0,
+      "min": 0,
+      "max": 0,
+      "n": 1
+    },
+    "dlq": [
+      {
+        "DUPLICATE_EVENT": 8,
+        "VALUE_ERROR": 8
+      }
+    ],
+    "dropped_by_watermark": [
+      {
+        "wide": 8,
+        "alert": 8
+      }
+    ],
+    "producer": [
+      null
+    ],
+    "spark_batches": {
+      "batches": {
+        "median": 240,
+        "min": 240,
+        "max": 240,
+        "n": 1
+      },
+      "median_batch_ms": {
+        "median": 1124.5,
+        "min": 1124.5,
+        "max": 1124.5,
+        "n": 1
+      },
+      "max_batch_ms": {
+        "median": 6626,
+        "min": 6626,
+        "max": 6626,
+        "n": 1
+      },
+      "max_processed_rows_per_s": {
+        "median": 1282.4,
+        "min": 1282.4,
+        "max": 1282.4,
+        "n": 1
+      }
+    },
+    "recovery": {
+      "first_output_after_restart_s": {
+        "median": 13.289,
+        "min": 13.289,
+        "max": 13.289,
+        "n": 1
+      },
+      "missing_telemetry": {
+        "median": 0,
+        "min": 0,
+        "max": 0,
+        "n": 1
+      },
+      "missing_windows": {
+        "median": 0,
+        "min": 0,
+        "max": 0,
         "n": 1
       }
     }

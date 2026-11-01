@@ -81,7 +81,8 @@ def latency_cdf():
         if drawn:
             handles, labels = axes[0].get_legend_handles_labels()
             figure.legend(handles, labels, loc="upper center", ncol=5, bbox_to_anchor=(0.5, 1.02))
-            figure.suptitle(f"E2 — CDF latency {KIND_LABELS[kind].lower()} (gộp 3 lần lặp)", y=1.1, fontsize=12)
+            figure.suptitle(f"E2 — CDF latency {KIND_LABELS[kind].lower()} (gộp mọi lần chạy của mỗi cấu hình)",
+                             y=1.1, fontsize=12)
             figure.savefig(PLOTS / f"e2_latency_cdf_{kind}.png", dpi=150, bbox_inches="tight")
         plt.close(figure)
 
@@ -95,29 +96,25 @@ def p95_by_load():
                 per_run[kind][(run["spec"]["profile"], config)].append(stats[kind]["p95"])
     configs = [c for c in SERIES if c != "spark default+fetch500"]
     for kind, data in per_run.items():
-        figure, axis = plt.subplots(figsize=(10, 4))
-        width = 0.8 / len(configs)
-        for index, config in enumerate(configs):
-            positions = [p + (index - (len(configs) - 1) / 2) * width for p in range(len(PROFILES))]
-            series = [data.get((profile, config), []) for profile in PROFILES]
-            present = [(pos, values) for pos, values in zip(positions, series) if values]
-            if not present:
+        figure, axis = plt.subplots(figsize=(9, 4))
+        for config in configs:
+            points = [(index, sorted(data[(profile, config)])) for index, profile in enumerate(PROFILES)
+                      if data.get((profile, config))]
+            if not points:
                 continue
-            box = axis.boxplot([v for _, v in present], positions=[p for p, _ in present], widths=width * 0.8,
-                               patch_artist=True, showfliers=False, medianprops={"color": SURFACE, "linewidth": 2})
-            for patch in box["boxes"]:
-                patch.set(facecolor=SERIES[config], edgecolor=SERIES[config])
-            for element in ("whiskers", "caps"):
-                for line in box[element]:
-                    line.set(color=SERIES[config])
-            axis.scatter([p for p, v in present for _ in v], [x for _, v in present for x in v], s=14,
-                         color=INK_2, zorder=3)
-            axis.plot([], [], color=SERIES[config], linewidth=8, label=LABELS[config])
+            x = [index for index, _ in points]
+            medians = [values[len(values) // 2] for _, values in points]
+            spread = [[m - values[0] for m, (_, values) in zip(medians, points)],
+                      [values[-1] - m for m, (_, values) in zip(medians, points)]]
+            axis.errorbar(x, medians, yerr=spread, color=SERIES[config], marker="o", markersize=8,
+                          capsize=4, label=LABELS[config])
         axis.set_xticks(range(len(PROFILES)), [PROFILE_LABELS[p] for p in PROFILES])
+        axis.set_xlim(-0.3, len(PROFILES) - 0.7)
         axis.set_yscale("log")
         axis.set_ylabel("p95 latency (ms, thang log)")
-        axis.set_title(f"E2 — p95 latency {KIND_LABELS[kind].lower()} theo tải (mỗi chấm là một lần lặp)")
-        axis.legend(loc="upper left", ncol=2)
+        axis.set_title(f"E2 — p95 latency {KIND_LABELS[kind].lower()} theo tải\n"
+                       "(trung vị các lần chạy; thanh = min–max khi có nhiều lần)")
+        axis.legend(loc="upper center", ncol=4, bbox_to_anchor=(0.5, -0.12))
         figure.savefig(PLOTS / f"e2_p95_{kind}.png", dpi=150, bbox_inches="tight")
         plt.close(figure)
 
@@ -135,14 +132,18 @@ def throughput():
         item = values[engine]
         color = SERIES["flink" if engine == "flink" else "spark default"]
         axis.bar(index, item["median"], width=0.55, color=color)
-        axis.errorbar(index, item["median"], yerr=[[item["median"] - item["min"]], [item["max"] - item["median"]]],
-                      color=INK_2, capsize=4, linewidth=1)
+        if item["n"] > 1:
+            axis.errorbar(index, item["median"], yerr=[[item["median"] - item["min"]], [item["max"] - item["median"]]],
+                          color=INK_2, capsize=4, linewidth=1)
         axis.annotate(f"{item['median']:,.0f}", (index, item["max"]), textcoords="offset points", xytext=(0, 6),
                       ha="center", color=INK)
     axis.set_xticks(range(len(engines)), ["Flink", "Spark"])
     axis.set_ylabel("Event RAW / giây")
-    axis.set_title("E3 — Throughput khi xử lý backlog HF200 × 2 phút\n(trung vị, thanh lỗi = min–max)")
+    runs_count = max(item["n"] for item in values.values())
+    axis.set_title("E3 — Throughput khi xử lý backlog HF200 × 2 phút\n"
+                   + ("(trung vị, thanh lỗi = min–max)" if runs_count > 1 else "(một lần chạy mỗi engine)"))
     axis.grid(axis="x", visible=False)
+    axis.set_axisbelow(True)
     figure.savefig(PLOTS / "e3_throughput.png", dpi=150, bbox_inches="tight")
     plt.close(figure)
 
@@ -161,6 +162,14 @@ def resource_series(run_dir, containers, origin):
     return [ts - origin / 1000 for ts, _ in points], [v[0] for _, v in points], [v[1] / 2 ** 20 for _, v in points]
 
 
+def rolling_mean(values, window):
+    result, total = [], 0.0
+    for index, value in enumerate(values):
+        total += value - (values[index - window] if index >= window else 0)
+        result.append(total / min(index + 1, window))
+    return result
+
+
 def resources():
     containers = {"flink": ["icu-flink-jobmanager", "icu-flink-taskmanager"], "spark": ["icu-spark"]}
     for profile in PROFILES:
@@ -176,11 +185,13 @@ def resources():
                     continue
                 run, run_dir = chosen[config]
                 series = resource_series(run_dir, containers[run["spec"]["engine"]], run["timeline"]["engine_ready"])
-                axis.plot(series[0], series[index], color=color, label=LABELS[config])
+                axis.plot(series[0], rolling_mean(series[index], 10), color=color, label=LABELS[config])
             axis.set_xlabel("Giây kể từ khi engine sẵn sàng")
-            axis.set_ylabel(label)
-            axis.set_title(f"E2 {PROFILE_LABELS[profile]} — {'CPU' if metric == 'cpu' else 'Bộ nhớ'} theo thời gian (lần lặp 1)")
-            axis.legend(loc="upper right", ncol=2)
+            axis.set_ylabel(label + "\ntrung bình trượt 10 s")
+            axis.set_title(f"E2 {PROFILE_LABELS[profile]} — {'CPU' if metric == 'cpu' else 'Bộ nhớ'} theo thời gian "
+                           "(lần lặp 1)", pad=28)
+            axis.set_ylim(bottom=0)
+            axis.legend(loc="lower center", ncol=4, bbox_to_anchor=(0.5, 1.0))
             figure.savefig(PLOTS / f"e2_{metric}_{profile}.png", dpi=150, bbox_inches="tight")
             plt.close(figure)
 
@@ -189,7 +200,8 @@ def spark_batches():
     for profile in PROFILES:
         figure, axis = plt.subplots(figsize=(10, 3.5))
         drawn = False
-        for run, run_dir, config in runs("E2"):
+        order = list(SERIES)
+        for run, run_dir, config in sorted(runs("E2"), key=lambda item: order.index(item[2]) if item[2] in order else 99):
             path = run_dir / "spark_metrics" / "wide.jsonl"
             if run["spec"]["profile"] != profile or run["spec"]["repeat"] != 1 or not path.exists():
                 continue
