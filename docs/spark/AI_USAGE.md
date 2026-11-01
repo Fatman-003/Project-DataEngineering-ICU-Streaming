@@ -24,3 +24,7 @@ chạy và chịu trách nhiệm cho mọi thay đổi, và tự viết lời v�
 | 4 | `jobs/spark/{alert_logic,q_alert}.py`, `tests/spark/test_alert_logic.py` | Viết Q_alert, chạy lại 27 test cảnh báo có sẵn trên logic Spark, so sánh live 3 kịch bản | Review; D22 |
 | 5 | `bench/{collect,reference,compare}.py`, `bench/requirements.txt`, `tests/bench/test_reference.py` | Viết công cụ thu dữ liệu, ground truth độc lập và so sánh; chạy trên 3 kịch bản | Review; D23–D24 |
 | 6 | `bench/{run,latency,resources,preload,summarize,plots}.py`, `docker/compose.bench.yaml`, `bench/results/{summary.json,summary.md,plots/}` | Viết bộ điều phối benchmark, chạy E1–E4 (phát hiện và sửa lỗi `sudo` làm mất biến môi trường), tổng hợp số liệu và vẽ biểu đồ | Duyệt đổi mức tải (D25) và ma trận rút gọn (D26) |
+| 7 | `bench/report.py`, `docs/spark/EVALUATION_TEMPLATE.md`, `docs/SPARK_VS_FLINK_EVALUATION.md`, mục Spark/benchmark trong `README.md` | Soạn khung báo cáo, bảng bằng chứng cho H1–H6 và các gợi ý; số liệu được điền tự động từ `summary.json` | **Viết toàn bộ phần kết luận và phân tích** (các ô «Nhóm viết») |
+
+Phần kết luận trong `docs/SPARK_VS_FLINK_EVALUATION.md` được cố ý để trống. AI chỉ cung cấp số đo,
+bằng chứng và câu hỏi gợi ý; nhận định cuối cùng là của nhóm.

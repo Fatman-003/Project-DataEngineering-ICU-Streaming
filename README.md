@@ -156,6 +156,37 @@ docker compose -f docker/compose.yaml --env-file .env up -d
 
 Sau `down -v` **không cần** chạy seed/topic thủ công — `icu-init` lo toàn bộ.
 
+## Chạy giải pháp thay thế Spark
+
+Pipeline PySpark Structured Streaming (`jobs/spark/`) đọc **cùng RAW topic** với Flink, dùng
+chung logic Python và ghi ra các topic riêng `icu.alt.spark.{telemetry,vitals.5m,alerts,deadletter}`.
+Server, writer và UI không đọc các topic này. Service `icu-spark` chỉ chạy khi bật profile `spark`:
+
+```bash
+docker compose -f docker/compose.yaml --env-file .env --profile spark up -d --build
+# Spark UI: http://127.0.0.1:4040 ; metric từng batch: volume icu-spark-metrics (*.jsonl)
+```
+
+Tùy chọn qua biến môi trường: `SPARK_TRIGGER` (rỗng = chạy batch liên tục, hoặc ví dụ `5 seconds`),
+`SPARK_SHUFFLE_PARTITIONS` (mặc định 1), `SPARK_KAFKA_FETCH_MAX_WAIT_MS` (mặc định 10). Sau khi reset
+topic, phải xóa volume `icu-spark-checkpoints`, vì offset cũ không còn hợp lệ. Thiết kế và các khác
+biệt ngữ nghĩa với Flink: [`docs/spark/DECISIONS.md`](docs/spark/DECISIONS.md).
+
+## Chạy benchmark
+
+Công cụ trong `bench/` so Flink và Spark về correctness, latency, throughput, tài nguyên và phục
+hồi lỗi. Cần môi trường Python có `bench/requirements.txt`.
+
+```bash
+pip install -r bench/requirements.txt
+python bench/run.py --plan all --lite --docker "sudo docker"   # bỏ --lite để chạy đủ ma trận 3 lần lặp
+python bench/summarize.py && python bench/plots.py && python bench/report.py
+```
+
+Mỗi run được lưu trong `bench/results/<thí nghiệm>/<run>/`. Run đã xong được bỏ qua khi chạy lại.
+Kết quả tổng hợp: [`bench/results/summary.md`](bench/results/summary.md); báo cáo:
+[`docs/SPARK_VS_FLINK_EVALUATION.md`](docs/SPARK_VS_FLINK_EVALUATION.md).
+
 ## Ma trận hiển thị Trend (client)
 
 | Range | Dữ liệu | Bucket | Hiển thị | Cập nhật |
