@@ -17,6 +17,10 @@ public record VitalsWindow5mMessage(
         @JsonProperty("avg_heart_rate") Double avgHeartRate,
         @JsonProperty("avg_map") Double avgMap,
         @JsonProperty("avg_sbp") Double avgSbp,
-        @JsonProperty("avg_spo2") Double avgSpo2
+        @JsonProperty("avg_spo2") Double avgSpo2,
+        @JsonProperty("var_heart_rate") Double varHeartRate,
+        @JsonProperty("var_map") Double varMap,
+        @JsonProperty("var_sbp") Double varSbp,
+        @JsonProperty("var_spo2") Double varSpo2
 ) implements Message {
 }

@@ -33,6 +33,8 @@ export interface RealtimeState {
   latestTelemetry: TelemetryPoint | null
   vitals5m: Vitals5mPayload[]
   alerts: AlertRecord[]
+  // Ward-wide feed: alerts for every stay, independent of the selected patient.
+  wardAlerts: AlertRecord[]
 }
 
 export type LiveTelemetryMode =
@@ -42,6 +44,8 @@ export type LiveTelemetryMode =
 export type RealtimeAction =
   | { type: 'event'; event: RealtimeEvent }
   | { type: 'batch'; events: RealtimeEvent[]; live: LiveTelemetryMode }
+  | { type: 'wardBatch'; events: RealtimeEvent[] }
+  | { type: 'wardHydrate'; alerts: AlertRecord[] }
   | {
       type: 'hydrate'
       telemetry: TelemetryPoint[]
@@ -57,11 +61,15 @@ export function createInitialState(): RealtimeState {
     latestTelemetry: null,
     vitals5m: [],
     alerts: [],
+    wardAlerts: [],
   }
 }
 
 export function realtimeReducer(state: RealtimeState, action: RealtimeAction): RealtimeState {
-  if (action.type === 'reset') return createInitialState()
+  if (action.type === 'reset') {
+    // Switching patients must not drop the ward-wide alert feed.
+    return { ...createInitialState(), wardAlerts: state.wardAlerts }
+  }
 
   if (action.type === 'batch') {
     let next = state
@@ -69,6 +77,27 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
       next = applyEvent(next, event, action.live)
     }
     return next
+  }
+
+  if (action.type === 'wardBatch') {
+    let alerts = state.wardAlerts
+    for (const event of action.events) {
+      if (event.type === 'ALERT_CREATED') alerts = alertRecordsAfterCreated(alerts, event)
+      else if (event.type === 'ALERT_STATUS_CHANGED') {
+        alerts = alertRecordsAfterStatus(alerts, event)
+      }
+    }
+    return alerts === state.wardAlerts ? state : { ...state, wardAlerts: sortAlerts(alerts) }
+  }
+
+  if (action.type === 'wardHydrate') {
+    const alerts = [...state.wardAlerts]
+    for (const alert of action.alerts) {
+      const index = alerts.findIndex((item) => item.alertId === alert.alertId)
+      if (index === -1) alerts.push(alert)
+      else alerts[index] = alert
+    }
+    return { ...state, wardAlerts: sortAlerts(alerts) }
   }
 
   if (action.type === 'hydrate') {
@@ -107,6 +136,7 @@ export function realtimeReducer(state: RealtimeState, action: RealtimeAction): R
       latestTelemetry: sortedTelemetry.length > 0 ? sortedTelemetry[sortedTelemetry.length - 1] : null,
       vitals5m: sortVitals(vitals5m),
       alerts: sortAlerts(alerts),
+      wardAlerts: state.wardAlerts,
     }
   }
 
@@ -229,6 +259,11 @@ function applyVitals5m(state: RealtimeState, event: RealtimeEvent): RealtimeStat
 
 function applyAlertCreated(state: RealtimeState, event: RealtimeEvent): RealtimeState {
   if (!isAlert(event.data)) return state
+  return { ...state, alerts: sortAlerts(alertRecordsAfterCreated(state.alerts, event)) }
+}
+
+function alertRecordsAfterCreated(alerts: AlertRecord[], event: RealtimeEvent): AlertRecord[] {
+  if (!isAlert(event.data)) return alerts
 
   const record: AlertRecord = {
     alertId: event.data.alertId,
@@ -242,14 +277,19 @@ function applyAlertCreated(state: RealtimeState, event: RealtimeEvent): Realtime
     updatedAt: event.sentAt,
   }
 
-  return { ...state, alerts: sortAlerts(upsertAlert(state.alerts, record)) }
+  return upsertAlert(alerts, record)
 }
 
 function applyAlertStatus(state: RealtimeState, event: RealtimeEvent): RealtimeState {
   if (!isAlertStatusChange(event.data)) return state
+  return { ...state, alerts: sortAlerts(alertRecordsAfterStatus(state.alerts, event)) }
+}
+
+function alertRecordsAfterStatus(alerts: AlertRecord[], event: RealtimeEvent): AlertRecord[] {
+  if (!isAlertStatusChange(event.data)) return alerts
 
   const { alertId, alertTime, status } = event.data
-  const existing = state.alerts.find((alert) => alert.alertId === alertId)
+  const existing = alerts.find((alert) => alert.alertId === alertId)
 
   if (!existing) {
     const placeholder: AlertRecord = {
@@ -263,13 +303,12 @@ function applyAlertStatus(state: RealtimeState, event: RealtimeEvent): RealtimeS
       status,
       updatedAt: event.sentAt,
     }
-    return { ...state, alerts: sortAlerts(upsertAlert(state.alerts, placeholder)) }
+    return upsertAlert(alerts, placeholder)
   }
 
-  const updated = state.alerts.map((alert) =>
+  return alerts.map((alert) =>
     alert.alertId === alertId ? { ...alert, status, updatedAt: event.sentAt } : alert,
   )
-  return { ...state, alerts: sortAlerts(updated) }
 }
 
 function upsertAlert(alerts: AlertRecord[], record: AlertRecord): AlertRecord[] {

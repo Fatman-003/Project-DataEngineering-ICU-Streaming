@@ -77,7 +77,7 @@ class IcuStayServiceTest {
         StaySummaryDto dto = new StaySummaryDto(
                 1000001L, 1L, 2L, "F", 67, "1", "MICU", "MICU",
                 null, null, null, null, null, null, null);
-        Pageable pageable = PageRequest.of(1, 20, Sort.by(Sort.Direction.ASC, "stayId"));
+        Pageable pageable = PageRequest.of(1, 20, Sort.by(Sort.Direction.ASC, "bedId", "stayId"));
         PageImpl<IcuStayEntity> page = new PageImpl<>(List.of(entity), pageable, 21L);
 
         when(repository.findAll(any(Pageable.class))).thenReturn(page);
@@ -100,12 +100,12 @@ class IcuStayServiceTest {
         Pageable usedPageable = pageableCaptor.getValue();
         assertEquals(1, usedPageable.getPageNumber());
         assertEquals(20, usedPageable.getPageSize());
-        assertEquals(Sort.by(Sort.Direction.ASC, "stayId"), usedPageable.getSort());
+        assertEquals(Sort.by(Sort.Direction.ASC, "bedId", "stayId"), usedPageable.getSort());
     }
 
     @Test
     void usesDefaultPageAndSizeWhenInputIsInvalid() {
-        Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.ASC, "stayId"));
+        Pageable pageable = PageRequest.of(0, 10, Sort.by(Sort.Direction.ASC, "bedId", "stayId"));
         PageImpl<IcuStayEntity> page = new PageImpl<>(List.of(), pageable, 0L);
 
         when(repository.findAll(any(Pageable.class))).thenReturn(page);
@@ -124,7 +124,7 @@ class IcuStayServiceTest {
 
     @Test
     void capsPageSizeAtMaximumLimit() {
-        Pageable pageable = PageRequest.of(2, 100, Sort.by(Sort.Direction.ASC, "stayId"));
+        Pageable pageable = PageRequest.of(2, 100, Sort.by(Sort.Direction.ASC, "bedId", "stayId"));
         PageImpl<IcuStayEntity> page = new PageImpl<>(List.of(), pageable, 201L);
 
         when(repository.findAll(any(Pageable.class))).thenReturn(page);

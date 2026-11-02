@@ -165,6 +165,25 @@ Sau `down -v` **không cần** chạy seed/topic thủ công — `icu-init` lo t
 | 2h | time_bucket + min/max | 20s | Line + dải Min–Max | Bucket + refetch 60s |
 | 12h | time_bucket | 120s | Macro trend | Load 1 lần + refetch 60s |
 
+## API & WebSocket (server)
+
+REST (JSON, prefix `/api/v1`):
+
+| Endpoint | Mô tả |
+|---|---|
+| `GET /icu-stays` · `GET /icu-stays/{stayId}` | Danh sách (sort theo `bed_id` — thứ tự giường vật lý) / chi tiết bệnh nhân ICU |
+| `GET /icu-stays/{stayId}/telemetry` | Telemetry history (raw hoặc bucket theo `bucketSeconds`) |
+| `GET /icu-stays/{stayId}/vitals-5m` | Cửa sổ 5 phút: `avg_*` + `var_*` (phương sai mỗi chỉ số) |
+| `GET /icu-stays/{stayId}/alerts` | Alert history của 1 bệnh nhân |
+| **`GET /alerts`** | **Alert feed toàn khoa** — mọi bệnh nhân, lọc `status`, sắp `alertTime` desc |
+
+WebSocket STOMP (`/ws`):
+
+- `/topic/stays/{stayId}/telemetry` · `/vitals-5m` · `/alerts` — theo từng bệnh nhân.
+- `/topic/alerts` — **feed alert toàn khoa**: mỗi alert bắn ra cho cả hai destination, nên console đang xem bệnh nhân nào cũng thấy alert của bệnh nhân khác (đúng nghiệp vụ giám sát tập trung ICU).
+
+UI thể hiện: dòng bệnh nhân trong **Patient list** gắn **cờ alert** khi có alert ACTIVE (CRITICAL nhấp nháy đỏ + số lượng, WARNING nền hổ phách) — bác sĩ liếc list là thấy giường nào có vấn đề; panel **5-minute averages** hiển thị `±σ` (độ lệch chuẩn = √var) cho HR/MAP/SBP/SpO2.
+
 ## Cấu trúc project
 
 ```

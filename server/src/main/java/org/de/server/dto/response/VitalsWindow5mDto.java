@@ -8,6 +8,10 @@ public record VitalsWindow5mDto(
         Double avgHeartRate,
         Double avgMap,
         Double avgSbp,
-        Double avgSpo2
+        Double avgSpo2,
+        Double varHeartRate,
+        Double varMap,
+        Double varSbp,
+        Double varSpo2
 ) {
 }

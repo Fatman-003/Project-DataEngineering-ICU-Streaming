@@ -16,6 +16,7 @@ public class RealtimePublisher {
     private static final String TELEMETRY = "/topic/stays/%d/telemetry";
     private static final String VITALS_5M = "/topic/stays/%d/vitals-5m";
     private static final String ALERTS = "/topic/stays/%d/alerts";
+    private static final String WARD_ALERTS = "/topic/alerts";
 
     private final SimpMessagingTemplate template;
     private final AtomicLong sequence = new AtomicLong();
@@ -37,10 +38,15 @@ public class RealtimePublisher {
     public void publishAlert(AlertDto dto) {
         send(ALERTS.formatted(dto.stayId()),
                 RealtimeEventType.ALERT_CREATED, dto.stayId(), dto.alertTime(), dto);
+        send(WARD_ALERTS,
+                RealtimeEventType.ALERT_CREATED, dto.stayId(), dto.alertTime(), dto);
     }
 
     public void publishAlertStatus(AlertStatusChangeDto dto) {
         send(ALERTS.formatted(dto.stayId()),
+                RealtimeEventType.ALERT_STATUS_CHANGED,
+                dto.stayId(), dto.alertTime(), dto);
+        send(WARD_ALERTS,
                 RealtimeEventType.ALERT_STATUS_CHANGED,
                 dto.stayId(), dto.alertTime(), dto);
     }

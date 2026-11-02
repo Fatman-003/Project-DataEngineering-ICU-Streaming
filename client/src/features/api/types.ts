@@ -113,6 +113,10 @@ export interface VitalsWindow5mDto {
   avgMap: number | null
   avgSbp: number | null
   avgSpo2: number | null
+  varHeartRate: number | null
+  varMap: number | null
+  varSbp: number | null
+  varSpo2: number | null
 }
 
 export interface Vitals5mHistoryResponse {

@@ -1,16 +1,11 @@
 import { ShieldCheck, TriangleAlert } from 'lucide-react'
 import type { AlertRecord } from '../../features/realtime/realtimeReducer'
-import type { AlertStatus, AlertType } from '../../features/realtime/types'
+import type { AlertStatus } from '../../features/realtime/types'
+import { alertTypeLabel } from '../../lib/alerts'
 import { formatTime, shortId } from '../../lib/format'
 import { Badge } from '../ui/Badge'
 import type { BadgeTone } from '../ui/Badge'
 import styles from './AlertsPanel.module.css'
-
-const TYPE_LABEL: Record<AlertType, string> = {
-  HYPOTENSION_SUSTAINED: 'Sustained hypotension',
-  QSOFA_HIGH_RISK: 'High qSOFA risk',
-  SENSOR_DISCONNECTED: 'Sensor disconnected',
-}
 
 const STATUS_LABEL: Record<AlertStatus, string> = {
   ACTIVE: 'Active',
@@ -68,7 +63,7 @@ export function AlertsPanel({ alerts }: AlertsPanelProps) {
 
                 <div className={styles.content}>
                   <div className={styles.titleRow}>
-                    <strong>{alert.alertType ? TYPE_LABEL[alert.alertType] : 'Unclassified alert'}</strong>
+                    <strong>{alertTypeLabel(alert.alertType)}</strong>
                     <Badge tone={STATUS_TONE[alert.status]}>{STATUS_LABEL[alert.status]}</Badge>
                   </div>
 

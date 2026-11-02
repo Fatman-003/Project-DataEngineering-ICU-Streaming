@@ -34,4 +34,16 @@ public class VitalsSlidingWindow5mEntity {
 
     @Column(name = "avg_spo2")
     private Double avgSpo2;
+
+    @Column(name = "var_heart_rate")
+    private Double varHeartRate;
+
+    @Column(name = "var_map")
+    private Double varMap;
+
+    @Column(name = "var_sbp")
+    private Double varSbp;
+
+    @Column(name = "var_spo2")
+    private Double varSpo2;
 }

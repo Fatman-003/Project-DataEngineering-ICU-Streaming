@@ -143,7 +143,11 @@ class PatientMonitoringControllerTest {
                 80.0,
                 62.0,
                 120.0,
-                98.0
+                98.0,
+                16.0,
+                30.2,
+                110.5,
+                0.6
         );
         Vitals5mHistoryResponse response = new Vitals5mHistoryResponse(1000001L, List.of(window));
 
@@ -154,7 +158,8 @@ class PatientMonitoringControllerTest {
                 .andExpect(content().contentType("application/json"))
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.stayId").value(1000001))
-                .andExpect(jsonPath("$.data.windows[0].avgHeartRate").value(80.0));
+                .andExpect(jsonPath("$.data.windows[0].avgHeartRate").value(80.0))
+                .andExpect(jsonPath("$.data.windows[0].varHeartRate").value(16.0));
 
         verify(patientVitalsService).getVitals5mHistory(1000001L, null);
         verifyNoMoreInteractions(patientVitalsService);

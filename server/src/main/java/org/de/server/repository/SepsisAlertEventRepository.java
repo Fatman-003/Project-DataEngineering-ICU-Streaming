@@ -26,4 +26,16 @@ public interface SepsisAlertEventRepository extends JpaRepository<SepsisAlertEve
             @Param("status") AlertStatus status,
             Pageable pageable
     );
+
+    @Query(
+            """
+            SELECT a FROM SepsisAlertEventEntity a
+            WHERE (:status IS NULL OR a.status = :status)
+            ORDER BY a.id.alertTime DESC
+            """
+    )
+    Page<SepsisAlertEventEntity> findAlertFeed(
+            @Param("status") AlertStatus status,
+            Pageable pageable
+    );
 }

@@ -5,7 +5,7 @@
 
 .item {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: 58px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   width: 100%;
@@ -57,4 +57,37 @@
 .id {
   font-size: 10px;
   color: var(--faint);
+}
+
+.alertFlag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.item[data-alert='crit'] .alertFlag {
+  color: var(--crit);
+  background: var(--crit-soft);
+  border: 1px solid #fecaca;
+  animation: row-alert-pulse 1.4s ease-in-out infinite;
+}
+
+.item[data-alert='warn'] .alertFlag {
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid #fde68a;
+}
+
+@keyframes row-alert-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }

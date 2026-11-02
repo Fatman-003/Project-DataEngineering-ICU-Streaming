@@ -1,5 +1,7 @@
 import type {
   AlertHistoryResponse,
+  AlertSnapshotDto,
+  AlertStatus,
   ApiResponse,
   LabHistoryResponse,
   StaySummaryDto,
@@ -90,6 +92,13 @@ export async function fetchAlertHistory(
   limit = 100,
 ): Promise<AlertHistoryResponse> {
   return get<AlertHistoryResponse>(`/api/v1/icu-stays/${stayId}/alerts${query({ limit })}`)
+}
+
+export async function fetchWardAlerts(
+  status: AlertStatus = 'ACTIVE',
+  limit = 50,
+): Promise<PageDto<AlertSnapshotDto>> {
+  return get<PageDto<AlertSnapshotDto>>(`/api/v1/alerts${query({ status, limit })}`)
 }
 
 export async function fetchVitals5mHistory(

@@ -99,12 +99,17 @@ class KafkaMessageMapperTest {
                 87.4,
                 71.2,
                 116.8,
-                96.9);
+                96.9,
+                18.2,
+                42.1,
+                96.0,
+                0.8);
 
         VitalsWindow5mDto dto = vitalsMapper.toDto(message);
 
         assertEquals(
-                new VitalsWindow5mDto(WINDOW_END, 1000001L, 87.4, 71.2, 116.8, 96.9),
+                new VitalsWindow5mDto(WINDOW_END, 1000001L, 87.4, 71.2, 116.8, 96.9,
+                        18.2, 42.1, 96.0, 0.8),
                 dto);
     }
 

@@ -22,9 +22,13 @@ public record PageDto<T>(
     private static final int MAX_PAGE_SIZE = 100;
 
     public static Pageable createPageable(Integer page, Integer size) {
+        return createPageable(page, size, Sort.by(Sort.Direction.ASC, "stayId"));
+    }
+
+    public static Pageable createPageable(Integer page, Integer size, Sort sort) {
         int safePage = page == null || page < 0 ? 0 : page;
         int safeSize = size == null || size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        return PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.ASC, "stayId"));
+        return PageRequest.of(safePage, safeSize, sort);
     }
 
     public static <T> PageDto<T> empty(int page, int size) {

@@ -39,6 +39,10 @@ export interface Vitals5mPayload {
   avgMap: number | null
   avgSbp: number | null
   avgSpo2: number | null
+  varHeartRate?: number | null
+  varMap?: number | null
+  varSbp?: number | null
+  varSpo2?: number | null
 }
 
 export type AlertType = 'HYPOTENSION_SUSTAINED' | 'QSOFA_HIGH_RISK' | 'SENSOR_DISCONNECTED'

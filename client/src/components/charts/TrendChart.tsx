@@ -53,12 +53,29 @@ function downsample(samples: ChartPoint[], maxPoints: number): ChartPoint[] {
   for (let start = 0; start < samples.length; start += bucketSize) {
     const end = Math.min(start + bucketSize, samples.length)
     let sum = 0
+    // The min–max envelope must survive downsampling: collapse each sub-bucket
+    // to min-of-mins / max-of-maxes so the average line stays inside the band.
+    let bandMin: number | undefined
+    let bandMax: number | undefined
 
     for (let index = start; index < end; index += 1) {
-      sum += samples[index].value
+      const sample = samples[index]
+      sum += sample.value
+      if (typeof sample.bandMin === 'number') {
+        bandMin = bandMin === undefined ? sample.bandMin : Math.min(bandMin, sample.bandMin)
+      }
+      if (typeof sample.bandSpan === 'number' && typeof sample.bandMin === 'number') {
+        const top = sample.bandMin + sample.bandSpan
+        bandMax = bandMax === undefined ? top : Math.max(bandMax, top)
+      }
     }
 
-    result.push({ t: samples[end - 1].t, value: sum / (end - start) })
+    const point: ChartPoint = { t: samples[end - 1].t, value: sum / (end - start) }
+    if (bandMin !== undefined && bandMax !== undefined && bandMax >= bandMin) {
+      point.bandMin = bandMin
+      point.bandSpan = bandMax - bandMin
+    }
+    result.push(point)
   }
 
   return result

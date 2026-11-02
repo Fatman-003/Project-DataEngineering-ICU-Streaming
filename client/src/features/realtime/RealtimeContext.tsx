@@ -6,6 +6,7 @@ import {
   fetchStaySummaries,
   fetchTelemetryHistory,
   fetchVitals5mHistory,
+  fetchWardAlerts,
 } from '../api/client'
 import type { AlertSnapshotDto, LabResultDto } from '../api/types'
 import { toPatientDetail } from '../../lib/patient'
@@ -31,6 +32,7 @@ interface RealtimeContextValue {
   patient: PatientDetail | null
   patients: PatientDetail[]
   labs: LabResultDto[]
+  wardAlerts: AlertRecord[]
   patientsStatus: LoadingStatus
   patientsError: string | null
   snapshotStatus: LoadingStatus
@@ -90,27 +92,58 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
   // dispatching one batch per interval keeps React re-renders bounded (~5/s)
   // instead of one full dashboard render per WebSocket message.
   const pendingEventsRef = useRef<RealtimeEvent[]>([])
+  const pendingWardEventsRef = useRef<RealtimeEvent[]>([])
 
   const emit = useCallback((event: RealtimeEvent) => {
     pendingEventsRef.current.push(event)
   }, [])
 
+  const emitWard = useCallback((event: RealtimeEvent) => {
+    pendingWardEventsRef.current.push(event)
+  }, [])
+
   useEffect(() => {
     const interval = window.setInterval(() => {
-      if (pendingEventsRef.current.length === 0) return
-      const events = pendingEventsRef.current
-      pendingEventsRef.current = []
-      const rangeMinutes = trendRangeRef.current ?? DEFAULT_TREND_RANGE_MINUTES
-      const live: LiveTelemetryMode =
-        rangeMinutes > DEFAULT_TREND_RANGE_MINUTES
-          ? { mode: 'bucket', bucketSeconds: bucketSecondsForRange(rangeMinutes) }
-          : { mode: 'raw' }
-      dispatch({ type: 'batch', events, live })
+      if (pendingEventsRef.current.length > 0) {
+        const events = pendingEventsRef.current
+        pendingEventsRef.current = []
+        const rangeMinutes = trendRangeRef.current ?? DEFAULT_TREND_RANGE_MINUTES
+        const live: LiveTelemetryMode =
+          rangeMinutes > DEFAULT_TREND_RANGE_MINUTES
+            ? { mode: 'bucket', bucketSeconds: bucketSecondsForRange(rangeMinutes) }
+            : { mode: 'raw' }
+        dispatch({ type: 'batch', events, live })
+      }
+
+      if (pendingWardEventsRef.current.length > 0) {
+        const events = pendingWardEventsRef.current
+        pendingWardEventsRef.current = []
+        dispatch({ type: 'wardBatch', events })
+      }
     }, 200)
     return () => window.clearInterval(interval)
   }, [])
 
-  const status = useStompConnection({ url: WS_URL, stayId, onEvent: emit })
+  const status = useStompConnection({ url: WS_URL, stayId, onEvent: emit, onWardEvent: emitWard })
+
+  // Ward-wide active alerts hydrate once on load and after every reconnect,
+  // so alerts raised while the console was offline are not missed.
+  const hydrateWardAlerts = useCallback(async () => {
+    try {
+      const page = await fetchWardAlerts('ACTIVE', 50)
+      dispatch({ type: 'wardHydrate', alerts: page.content.map(toAlertRecord) })
+    } catch {
+      // The live ward subscription still updates the bar; retry on reconnect.
+    }
+  }, [])
+
+  useEffect(() => {
+    void hydrateWardAlerts()
+  }, [hydrateWardAlerts])
+
+  useEffect(() => {
+    if (status === 'connected') void hydrateWardAlerts()
+  }, [status, hydrateWardAlerts])
 
   useEffect(() => {
     let cancelled = false
@@ -258,6 +291,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       patient,
       patients,
       labs,
+      wardAlerts: state.wardAlerts,
       patientsStatus,
       patientsError,
       snapshotStatus,
@@ -272,6 +306,7 @@ export function RealtimeProvider({ children }: RealtimeProviderProps) {
       patient,
       patients,
       labs,
+      state.wardAlerts,
       patientsStatus,
       patientsError,
       snapshotStatus,

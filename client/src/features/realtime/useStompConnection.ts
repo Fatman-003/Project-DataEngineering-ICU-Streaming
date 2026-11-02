@@ -2,7 +2,7 @@ import { Client } from '@stomp/stompjs'
 import type { IMessage, StompSubscription } from '@stomp/stompjs'
 import { useEffect, useRef, useState } from 'react'
 import type { RealtimeEvent } from './types'
-import { stayDestinations } from './topics'
+import { WARD_ALERTS_TOPIC, stayDestinations } from './topics'
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'offline'
 
@@ -10,17 +10,23 @@ interface Options {
   url: string
   stayId: number | null
   onEvent: (event: RealtimeEvent) => void
+  onWardEvent: (event: RealtimeEvent) => void
 }
 
-export function useStompConnection({ url, stayId, onEvent }: Options): ConnectionStatus {
+export function useStompConnection({ url, stayId, onEvent, onWardEvent }: Options): ConnectionStatus {
   const [status, setStatus] = useState<ConnectionStatus>('connecting')
   const [epoch, setEpoch] = useState(0)
   const clientRef = useRef<Client | null>(null)
   const onEventRef = useRef(onEvent)
+  const onWardEventRef = useRef(onWardEvent)
 
   useEffect(() => {
     onEventRef.current = onEvent
   }, [onEvent])
+
+  useEffect(() => {
+    onWardEventRef.current = onWardEvent
+  }, [onWardEvent])
 
   useEffect(() => {
     let disposed = false
@@ -60,6 +66,26 @@ export function useStompConnection({ url, stayId, onEvent }: Options): Connectio
       void client.deactivate()
     }
   }, [url])
+
+  useEffect(() => {
+    const client = clientRef.current
+    if (!client || status !== 'connected') return
+
+    // Ward-wide alert feed: independent of the selected patient so alerts for
+    // every stay reach the console while any patient detail page is open.
+    const wardSubscription = client.subscribe(WARD_ALERTS_TOPIC, (message) => {
+      const event = parseEvent(message)
+      if (event) onWardEventRef.current(event)
+    })
+
+    return () => {
+      try {
+        wardSubscription.unsubscribe()
+      } catch {
+        // The connection may already be gone; nothing to clean up.
+      }
+    }
+  }, [status, epoch])
 
   useEffect(() => {
     const client = clientRef.current
